@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
@@ -33,11 +33,59 @@ import { DidIFkUpMascot } from '@/components/mascot/DidIFkUpMascot';
 import { StickersPage } from '@/pages/Stickers';
 import { SignInPage } from '@/pages/SignInPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
+import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useDailyUsage } from '@/hooks/useDailyUsage';
+import { useHistory, type HistoryItem } from '@/hooks/useHistory';
+import { useGoProCheckout } from '@/hooks/useGoProCheckout';
+
+/** Redirects to /onboarding when user is logged in but hasn't completed onboarding. */
+const OnboardingGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const navigate = useNavigate();
+  const { user, profile, loading, profileLoading } = useAuth();
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+    if (profileLoading || !profile) return;
+    if (!profile.onboarding_completed) {
+      navigate('/onboarding', { replace: true });
+    }
+  }, [user, profile, loading, profileLoading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 flex items-center justify-center">
+        <div className="animate-pulse text-gray-500 font-bold">Loading…</div>
+      </div>
+    );
+  }
+  if (!user) return <>{children}</>;
+  if (profileLoading || !profile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 flex items-center justify-center">
+        <div className="animate-pulse text-gray-500 font-bold">Loading…</div>
+      </div>
+    );
+  }
+  if (!profile.onboarding_completed) return null;
+  return <>{children}</>;
+};
 import { cn, cardPremium } from '@/lib/utils';
 
 type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 type Tone = 'nice' | 'real' | 'savage';
+
+const verdictShort: Record<RiskLevel, string> = {
+  LOW: 'LOW',
+  MEDIUM: 'MED',
+  HIGH: 'HIGH',
+};
+
+function buildHistoryCaption(verdict: RiskLevel, summary: string): string {
+  return `DidIFkUp verdict: ${verdictShort[verdict]} 💀\n${summary}\nTry it → didifkup.com`;
+}
 
 interface AnalysisResult {
   verdict: RiskLevel;
@@ -641,6 +689,7 @@ const ShareCard: React.FC<{ result: AnalysisResult; tone?: Tone }> = ({ result, 
 const LandingPage: React.FC = () => {
   const [showExample, setShowExample] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
+  const { handleGoPro, goProLoading, goProError } = useGoProCheckout();
 
   const handleExampleToggle = () => {
     if (!showExample) {
@@ -890,9 +939,16 @@ const LandingPage: React.FC = () => {
                     Priority support
                   </li>
                 </ul>
-                <Button className="btn-cta-primary w-full bg-lime-500 hover:bg-lime-600 py-6 text-lg shadow-lg shadow-lime-500/25">
-                  Go Pro
+                <Button
+                  onClick={handleGoPro}
+                  disabled={goProLoading}
+                  className="btn-cta-primary w-full bg-lime-500 hover:bg-lime-600 py-6 text-lg shadow-lg shadow-lime-500/25"
+                >
+                  {goProLoading ? 'Redirecting to checkout…' : 'Go Pro'}
                 </Button>
+                {goProError && (
+                  <p className="mt-3 text-sm text-red-600 font-medium text-center">{goProError}</p>
+                )}
               </div>
             </Card>
           </motion.div>
@@ -904,33 +960,107 @@ const LandingPage: React.FC = () => {
 
 const AppPage: React.FC = () => {
   const reduceMotion = useReducedMotion();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { session, profile, user, refreshSession } = useAuth();
+  const { isPro, refetch: refetchSubscription } = useSubscription(user?.id);
+  const { remaining, loading: usageLoading, refetch: refetchUsage } = useDailyUsage(user?.id, isPro);
+  const { items: historyItems, loading: historyLoading, refetch: refetchHistory } = useHistory(user?.id);
+  const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showUpgradeSuccess, setShowUpgradeSuccess] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [spiralMode, setSpiralMode] = useState(false);
-  const [checksLeft, setChecksLeft] = useState(2);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const [tone, setTone] = useState<Tone>('real');
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyze = () => {
-    if (checksLeft === 0) {
+  useEffect(() => {
+    if (searchParams.get('upgrade') !== 'success' || !user) return;
+    setShowUpgradeSuccess(true);
+    setSearchParams({}, { replace: true });
+    const t1 = setTimeout(() => setShowUpgradeSuccess(false), 4000);
+
+    refreshSession().then(() => {
+      refetchSubscription();
+      refetchUsage();
+    });
+    const t2 = setTimeout(() => refetchSubscription(), 1500);
+    const t3 = setTimeout(() => refetchSubscription(), 3500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [searchParams, setSearchParams, refetchSubscription, refetchUsage, refreshSession, user]);
+
+  useEffect(() => {
+    if (profile?.prefs) {
+      if (profile.prefs.spiralModeDefault != null) setSpiralMode(profile.prefs.spiralModeDefault);
+      if (profile.prefs.tone) setTone(profile.prefs.tone as Tone);
+    }
+  }, [profile?.prefs]);
+  const [happened, setHappened] = useState('');
+  const [youDid, setYouDid] = useState('');
+  const [theyDid, setTheyDid] = useState('');
+  const [relationship, setRelationship] = useState('friend');
+  const [context, setContext] = useState('texting');
+  const { handleGoPro, goProLoading, goProError } = useGoProCheckout();
+
+  const handleAnalyze = async () => {
+    if (!session?.access_token) {
+      navigate('/signin');
+      return;
+    }
+    if (!isPro && remaining === 0) {
       setShowPaywall(true);
       return;
     }
+    setError(null);
     setAnalyzing(true);
     setMascotMood('loading');
-    setTimeout(() => {
-      const verdict: RiskLevel = 'LOW';
-      const analysisText = generateAnalysisText(verdict, tone);
-      setResult({
-        verdict,
-        ...analysisText
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          happened,
+          youDid,
+          theyDid,
+          relationship,
+          context,
+          tone,
+        }),
       });
-      setMascotMood(verdict.toLowerCase() as 'idle' | 'loading' | 'low' | 'medium' | 'high');
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        navigate('/signin');
+        return;
+      }
+      if (res.status === 402) {
+        setShowPaywall(true);
+        refetchUsage();
+        return;
+      }
+      if (!res.ok) {
+        setError(data?.error ?? data?.message ?? 'Something went wrong');
+        return;
+      }
+      setResult(data as AnalysisResult);
+      setMascotMood((data.verdict?.toLowerCase() ?? 'low') as 'idle' | 'loading' | 'low' | 'medium' | 'high');
+      refetchUsage();
+      refetchHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error');
+    } finally {
       setAnalyzing(false);
-      setChecksLeft(prev => Math.max(0, prev - 1));
-    }, 2000);
+    }
   };
 
   const handleCopy = (text: string, key: string) => {
@@ -945,7 +1075,7 @@ const AppPage: React.FC = () => {
     }`}>
       <BackgroundFX />
       <div className="container mx-auto px-4 relative z-10">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-8 relative">
           <div className="flex items-center gap-4">
             <DidIFkUpMascot mood={mascotMood} className="scale-75" onMoodCycle={setMascotMood} />
             <div>
@@ -957,14 +1087,32 @@ const AppPage: React.FC = () => {
               </p>
             </div>
           </div>
+          <AnimatePresence>
+            {showUpgradeSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="absolute top-4 right-4 z-20 rounded-full bg-lime-500 px-4 py-2 text-sm font-bold text-white shadow-lg"
+              >
+                You're Pro now! 🎉
+              </motion.div>
+            )}
+          </AnimatePresence>
           <motion.div
             className={`px-4 py-2 rounded-full font-bold text-sm shadow-lg ${
-              checksLeft === 0 ? 'bg-red-500 text-white' : 'bg-lime-500 text-white'
+              !isPro && remaining === 0 ? 'bg-red-500 text-white' : 'bg-lime-500 text-white'
             }`}
-            animate={checksLeft === 0 ? { scale: [1, 1.1, 1] } : {}}
-            transition={{ duration: 0.5, repeat: checksLeft === 0 ? Infinity : 0, repeatDelay: 2 }}
+            animate={!isPro && remaining === 0 ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.5, repeat: !isPro && remaining === 0 ? Infinity : 0, repeatDelay: 2 }}
           >
-            Checks left: {checksLeft}/2
+            {usageLoading ? (
+              '…'
+            ) : isPro ? (
+              'Unlimited'
+            ) : (
+              `Checks left: ${remaining}/2`
+            )}
           </motion.div>
         </div>
         <div className="flex justify-center mb-8">
@@ -994,6 +1142,8 @@ const AppPage: React.FC = () => {
                 </label>
                 <motion.div whileFocus={{ scale: 1.01 }}>
                   <Textarea
+                    value={happened}
+                    onChange={(e) => setHappened(e.target.value)}
                     placeholder="e.g. I left them on read for 3 days and now they're being weird..."
                     className="min-h-[100px] rounded-2xl border-2 text-base bg-gray-50 focus:bg-white transition-colors"
                   />
@@ -1006,6 +1156,8 @@ const AppPage: React.FC = () => {
                 </label>
                 <motion.div whileFocus={{ scale: 1.01 }}>
                   <Textarea
+                    value={youDid}
+                    onChange={(e) => setYouDid(e.target.value)}
                     placeholder="e.g. I sent 'sorry I've been busy' with no emoji"
                     className="min-h-[100px] rounded-2xl border-2 text-base bg-gray-50 focus:bg-white transition-colors"
                   />
@@ -1018,6 +1170,8 @@ const AppPage: React.FC = () => {
                 </label>
                 <motion.div whileFocus={{ scale: 1.01 }}>
                   <Textarea
+                    value={theyDid}
+                    onChange={(e) => setTheyDid(e.target.value)}
                     placeholder="e.g. They just replied 'np' and nothing else"
                     className="min-h-[100px] rounded-2xl border-2 text-base bg-gray-50 focus:bg-white transition-colors"
                   />
@@ -1028,7 +1182,7 @@ const AppPage: React.FC = () => {
                   <label className="block text-lg font-bold mb-2 text-gray-900">
                     Relationship
                   </label>
-                  <Select defaultValue="friend">
+                  <Select value={relationship} onValueChange={setRelationship}>
                     <SelectTrigger className="rounded-2xl border-2">
                       <SelectValue />
                     </SelectTrigger>
@@ -1046,7 +1200,7 @@ const AppPage: React.FC = () => {
                   <label className="block text-lg font-bold mb-2 text-gray-900">
                     Context
                   </label>
-                  <Select defaultValue="texting">
+                  <Select value={context} onValueChange={setContext}>
                     <SelectTrigger className="rounded-2xl border-2">
                       <SelectValue />
                     </SelectTrigger>
@@ -1081,6 +1235,11 @@ const AppPage: React.FC = () => {
                   ))}
                 </div>
               </div>
+              {error && (
+                <p className="text-sm text-red-600 font-medium bg-red-50 px-4 py-3 rounded-xl border border-red-200">
+                  {error}
+                </p>
+              )}
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -1200,6 +1359,28 @@ const AppPage: React.FC = () => {
                   </div>
                 </Card>
               </motion.div>
+            ) : analyzing ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="min-h-[600px]"
+              >
+                <Card className={cn(cardPremium, "p-8 border-lime-300/80 shadow-xl bg-white min-h-[600px]")}>
+                  <div className="card-premium-shine absolute inset-0 rounded-3xl" />
+                  <div className="relative z-10 space-y-6">
+                    <p className="text-center text-sm text-purple-600 font-bold mb-6">Analyzing…</p>
+                    <div className="h-10 w-32 mx-auto rounded-2xl bg-gray-200 animate-pulse" />
+                    <div className="h-6 w-full max-w-md mx-auto rounded bg-gray-100 animate-pulse" />
+                    <div className="h-6 w-[75%] mx-auto rounded bg-gray-100 animate-pulse" />
+                    <div className="space-y-3 mt-8">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-16 rounded-2xl bg-gray-100 animate-pulse" style={{ animationDelay: `${i * 0.1}s` }} />
+                      ))}
+                    </div>
+                    <div className="h-24 rounded-2xl bg-gray-100 animate-pulse mt-6" />
+                  </div>
+                </Card>
+              </motion.div>
             ) : (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -1225,9 +1406,118 @@ const AppPage: React.FC = () => {
                 </Card>
               </motion.div>
             )}
+            {user && (
+              <Card className={cn(cardPremium, "p-6 mt-6 bg-white")}>
+                <h4 className="font-bold text-lg mb-4 text-gray-900 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-purple-500" />
+                  History
+                </h4>
+                {historyLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+                    ))}
+                  </div>
+                ) : historyItems.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No verdicts yet. Run one above!</p>
+                ) : (
+                  <ul className="space-y-2 max-h-[320px] overflow-y-auto">
+                    {historyItems.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHistory(item)}
+                          className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-100 hover:border-gray-200 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-gray-500">
+                              {new Date(item.created_at).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            <span
+                              className={cn(
+                                'text-xs font-bold px-2 py-0.5 rounded-full',
+                                item.output.verdict === 'LOW' && 'bg-green-100 text-green-700',
+                                item.output.verdict === 'MEDIUM' && 'bg-orange-100 text-orange-700',
+                                item.output.verdict === 'HIGH' && 'bg-red-100 text-red-700'
+                              )}
+                            >
+                              {verdictShort[item.output.verdict]}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 line-clamp-2">{item.output.summary}</p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            )}
           </div>
         </div>
       </div>
+
+      <Dialog open={!!selectedHistory} onOpenChange={(open) => !open && setSelectedHistory(null)}>
+        <DialogContent className="rounded-3xl max-w-lg max-h-[90vh] overflow-y-auto">
+          {selectedHistory && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2 mb-2">
+                  <VerdictBadge level={selectedHistory.output.verdict} showConfetti={false} />
+                  <span className="text-sm text-gray-500">
+                    {new Date(selectedHistory.created_at).toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </span>
+                </div>
+                <p className="text-lg text-gray-800 font-medium">{selectedHistory.output.summary}</p>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div>
+                  <h4 className="font-bold text-sm mb-2 text-gray-700">Reasons</h4>
+                  <ul className="space-y-2">
+                    {selectedHistory.output.reasons.map((r, i) => (
+                      <li key={i} className="flex items-start gap-2 text-gray-600">
+                        <Check className="w-4 h-4 text-lime-500 flex-shrink-0 mt-0.5" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm mb-2 text-gray-700">Next Move</h4>
+                  <p className="text-gray-600">{selectedHistory.output.nextMove}</p>
+                </div>
+                <div className="relative pt-4 border-t">
+                  <CopyToast show={copiedIndex === 'history-caption'} className="-top-10" />
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-xl font-bold"
+                    onClick={() =>
+                      handleCopy(
+                        buildHistoryCaption(selectedHistory.output.verdict, selectedHistory.output.summary),
+                        'history-caption'
+                      )
+                    }
+                  >
+                    {copiedIndex === 'history-caption' ? (
+                      <Check className="w-4 h-4 mr-2 text-lime-500" />
+                    ) : (
+                      <Copy className="w-4 h-4 mr-2" />
+                    )}
+                    Copy caption
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showPaywall} onOpenChange={setShowPaywall}>
         <DialogContent className="rounded-3xl max-w-md overflow-hidden">
@@ -1252,9 +1542,16 @@ const AppPage: React.FC = () => {
           </DialogHeader>
           <div className="space-y-4 py-6 relative z-10">
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button className="w-full bg-gradient-to-r from-lime-500 to-teal-500 hover:from-lime-600 hover:to-teal-600 text-white rounded-2xl py-6 text-xl font-bold shadow-lg">
-                Go Pro — $12/month
+              <Button
+                onClick={handleGoPro}
+                disabled={goProLoading}
+                className="w-full bg-gradient-to-r from-lime-500 to-teal-500 hover:from-lime-600 hover:to-teal-600 text-white rounded-2xl py-6 text-xl font-bold shadow-lg"
+              >
+                {goProLoading ? 'Redirecting to checkout…' : 'Go Pro — $12/month'}
               </Button>
+              {goProError && (
+                <p className="mt-3 text-sm text-red-600 font-medium text-center">{goProError}</p>
+              )}
             </motion.div>
             <Button
               variant="ghost"
@@ -1394,10 +1691,26 @@ export default function DidIFkUpApp() {
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Layout><LandingPage /></Layout>} />
-          <Route path="/app" element={<Layout><AppPage /></Layout>} />
-          <Route path="/stickers" element={<Layout><StickersPage /></Layout>} />
+          <Route
+            path="/app"
+            element={
+              <OnboardingGuard>
+                <Layout><AppPage /></Layout>
+              </OnboardingGuard>
+            }
+          />
+          <Route
+            path="/stickers"
+            element={
+              <OnboardingGuard>
+                <Layout><StickersPage /></Layout>
+              </OnboardingGuard>
+            }
+          />
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/upgrade/success" element={<Navigate to="/app?upgrade=success" replace />} />
+          <Route path="/upgrade/cancel" element={<UpgradeCancelPage />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

@@ -33,4 +33,9 @@ export const env = {
   get stripePriceProMonthly(): string {
     return requireEnv('STRIPE_PRICE_PRO_MONTHLY', process.env.STRIPE_PRICE_PRO_MONTHLY);
   },
+  /** Pro price ID — prefers STRIPE_PRO_PRICE_ID, falls back to STRIPE_PRICE_PRO_MONTHLY */
+  get stripeProPriceId(): string {
+    const v = process.env.STRIPE_PRO_PRICE_ID ?? process.env.STRIPE_PRICE_PRO_MONTHLY;
+    return requireEnv('STRIPE_PRO_PRICE_ID or STRIPE_PRICE_PRO_MONTHLY', v);
+  },
 };

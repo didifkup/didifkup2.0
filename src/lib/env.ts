@@ -1,18 +1,17 @@
 /**
  * Client env — reads import.meta.env (Vite). Only VITE_* vars are exposed to the client.
- * In dev, missing vars use placeholders so the app loads (auth won't work until .env is set).
- * In prod, throws if required vars are missing.
+ * Vite replaces import.meta.env.VITE_* at BUILD time — set them in Vercel Project Settings → Environment Variables.
+ * If missing, uses placeholder so the build succeeds (auth won't work until vars are set).
  */
 function requireEnv(name: string, value: string | undefined, placeholder: string): string {
-  const trimmed = value?.trim();
+  const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed) {
-    if (import.meta.env.DEV) {
+    if (typeof console !== 'undefined') {
       console.warn(
-        `[env] Missing ${name}. Using placeholder — auth will not work. Add it to .env and restart.`
+        `[env] Missing ${name}. Add it in Vercel → Project Settings → Environment Variables. Auth will not work.`
       );
-      return placeholder;
     }
-    throw new Error(`[env] Missing or empty required var: ${name}. Set it in your deployment env.`);
+    return placeholder;
   }
   return trimmed;
 }
