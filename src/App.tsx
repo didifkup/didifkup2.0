@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, useSearchParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
@@ -34,6 +34,7 @@ import { StickersPage } from '@/pages/Stickers';
 import { SignInPage } from '@/pages/SignInPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
+import { PricingPage } from '@/pages/PricingPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useDailyUsage } from '@/hooks/useDailyUsage';
@@ -686,18 +687,44 @@ const ShareCard: React.FC<{ result: AnalysisResult; tone?: Tone }> = ({ result, 
   );
 };
 
-const LandingPage: React.FC = () => {
+interface LandingPageProps {
+  onAnalyze?: () => void;
+  onSeeExample?: () => void;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) => {
+  const exampleRef = React.useRef<HTMLElement | null>(null);
   const [showExample, setShowExample] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const { handleGoPro, goProLoading, goProError } = useGoProCheckout();
+  const { pathname, hash } = useLocation();
+
+  // Deep link: /#example — open example and scroll to it (e.g. "link in bio → see example")
+  useEffect(() => {
+    if (pathname !== '/' || hash !== '#example') return;
+    setShowExample(true);
+    setMascotMood('low');
+    const t = setTimeout(() => {
+      exampleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [pathname, hash]);
 
   const handleExampleToggle = () => {
+    if (onSeeExample) {
+      onSeeExample();
+      return;
+    }
     if (!showExample) {
       setMascotMood('loading');
+      setShowExample(true);
       setTimeout(() => {
-        setShowExample(true);
         setMascotMood('low');
-      }, 1000);
+      }, 400);
+      // Scroll after content has a moment to expand so smooth scroll lands on visible example
+      setTimeout(() => {
+        exampleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } else {
       setShowExample(false);
       setMascotMood('idle');
@@ -745,6 +772,7 @@ const LandingPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-4">
             <Button
               size="lg"
+              onClick={() => onAnalyze?.()}
               className="btn-cta-primary bg-gradient-to-r from-lime-500 to-teal-500 hover:from-lime-600 hover:to-teal-600 text-xl px-8 py-6"
             >
               Analyze what happened
@@ -811,14 +839,15 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      <AnimatePresence>
-        {showExample && (
-          <motion.section
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="container mx-auto px-4 section-padding relative z-10"
-          >
+      <section ref={exampleRef} id="example" className="container mx-auto px-4 section-padding relative z-10">
+        <AnimatePresence>
+          {showExample && (
+            <motion.section
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="relative"
+            >
             <Card className={cn(cardPremium, "max-w-3xl mx-auto p-8 bg-white border-lime-300/80")}>
               <div className="card-premium-shine absolute inset-0 rounded-3xl" />
               <div className="relative z-10">
@@ -871,9 +900,10 @@ const LandingPage: React.FC = () => {
                 <ShareCard result={exampleResult} />
               </div>
             </Card>
-          </motion.section>
-        )}
-      </AnimatePresence>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </section>
 
       <section className="container mx-auto px-4 section-padding relative z-10">
         <h2 className="text-section-title text-4xl md:text-5xl text-center mb-4 text-gray-900">
@@ -944,7 +974,7 @@ const LandingPage: React.FC = () => {
                   disabled={goProLoading}
                   className="btn-cta-primary w-full bg-lime-500 hover:bg-lime-600 py-6 text-lg shadow-lg shadow-lime-500/25"
                 >
-                  {goProLoading ? 'Redirecting to checkout…' : 'Go Pro'}
+                  {goProLoading ? 'Redirecting to checkout…' : 'Go Pro — $12/mo'}
                 </Button>
                 {goProError && (
                   <p className="mt-3 text-sm text-red-600 font-medium text-center">{goProError}</p>
@@ -1602,9 +1632,9 @@ const Navigation: React.FC = () => {
               <NavLinkItem to="/stickers" className="text-sm font-bold text-gray-600 hover:text-lime-500 transition-colors">
                 Stickers
               </NavLinkItem>
-              <button className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
+              <NavLinkItem to="/pricing" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 Pricing
-              </button>
+              </NavLinkItem>
               <button className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 How It Works
               </button>
@@ -1648,9 +1678,9 @@ const Navigation: React.FC = () => {
                 <NavLinkItem to="/stickers" className="block w-full text-left text-sm font-bold text-gray-600 py-2" onClick={closeMenu}>
                   Stickers
                 </NavLinkItem>
-                <button className="block w-full text-left text-lg font-bold text-gray-700 py-2">
+                <NavLinkItem to="/pricing" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
                   Pricing
-                </button>
+                </NavLinkItem>
                 <button className="block w-full text-left text-lg font-bold text-gray-700 py-2">
                   How It Works
                 </button>
@@ -1685,12 +1715,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </>
 );
 
+/** Wrapper for the landing route: passes onAnalyze so "Analyze what happened" switches to app page. */
+function LandingRoute() {
+  const navigate = useNavigate();
+  return (
+    <Layout>
+      <LandingPage onAnalyze={() => navigate('/app')} />
+    </Layout>
+  );
+}
+
 export default function DidIFkUpApp() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={<Layout><LandingPage /></Layout>} />
+          <Route path="/" element={<LandingRoute />} />
           <Route
             path="/app"
             element={
@@ -1707,6 +1747,7 @@ export default function DidIFkUpApp() {
               </OnboardingGuard>
             }
           />
+          <Route path="/pricing" element={<Layout><PricingPage /></Layout>} />
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/upgrade/success" element={<Navigate to="/app?upgrade=success" replace />} />
