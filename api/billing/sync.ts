@@ -1,0 +1,89 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
+import {
+  STRIPE_SECRET_KEY,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+} from '../_lib/env';
+
+/** Verify Supabase user via Auth REST API. Returns user with id and email or null. */
+async function verifySupabaseUser(
+  accessToken: string
+): Promise<{ id: string; email: string | undefined } | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+    },
+  });
+  if (!res.ok) return null;
+  const user = await res.json();
+  return user?.id ? { id: user.id, email: user.email } : null;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid Authorization header' });
+  }
+  const accessToken = auth.slice(7).trim();
+  if (!accessToken) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
+  }
+
+  const user = await verifySupabaseUser(accessToken);
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  let stripeCustomerId: string | null = null;
+  let subscriptionStatus: 'active' | 'inactive' = 'inactive';
+  let currentPeriodEnd: string | null = null;
+
+  if (user.email?.trim()) {
+    const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+    const customers = await stripe.customers.list({
+      email: user.email.trim(),
+      limit: 1,
+    });
+    const customer = customers.data[0];
+
+    if (customer) {
+      stripeCustomerId = customer.id;
+      const subs = await stripe.subscriptions.list({
+        customer: customer.id,
+        status: 'all',
+        limit: 10,
+      });
+      const activeSub = subs.data.find(
+        (s) => s.status === 'active' || s.status === 'trialing'
+      );
+      if (activeSub) {
+        subscriptionStatus = 'active';
+        currentPeriodEnd = activeSub.current_period_end
+          ? new Date(activeSub.current_period_end * 1000).toISOString()
+          : null;
+      }
+    }
+  }
+
+  const row: Record<string, unknown> = {
+    id: user.id,
+    subscription_status: subscriptionStatus,
+    current_period_end: currentPeriodEnd,
+  };
+  if (stripeCustomerId !== null) {
+    row.stripe_customer_id = stripeCustomerId;
+  }
+
+  await supabase.from('profiles').upsert(row, { onConflict: 'id' });
+
+  return res.status(200).json({ status: subscriptionStatus });
+}

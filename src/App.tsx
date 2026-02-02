@@ -26,14 +26,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { BackgroundFX } from '@/components/BackgroundFX';
 import { CopyToast } from '@/components/CopyToast';
 import { DidIFkUpMascot } from '@/components/mascot/DidIFkUpMascot';
 import { StickersPage } from '@/pages/Stickers';
 import { PricingPage } from '@/pages/PricingPage';
 import { SignInPage } from '@/pages/SignInPage';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { SignUpPage } from '@/pages/SignUpPage';
+import { UpgradeSuccessPage } from '@/pages/UpgradeSuccessPage';
+import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { openPaymentLink } from '@/lib/paymentLink';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { cn, cardPremium } from '@/lib/utils';
@@ -509,7 +513,6 @@ interface LandingPageProps {
 const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) => {
   const exampleRef = React.useRef<HTMLElement | null>(null);
   const [showExample, setShowExample] = useState(false);
-  const [showPaymentsModal, setShowPaymentsModal] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const { pathname, hash } = useLocation();
 
@@ -784,7 +787,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
                   </li>
                 </ul>
                 <Button
-                  onClick={() => setShowPaymentsModal(true)}
+                  onClick={() => openPaymentLink()}
                   className="btn-cta-primary w-full bg-lime-500 hover:bg-lime-600 py-6 text-lg shadow-lg shadow-lime-500/25"
                 >
                   Go Pro — $12/mo
@@ -794,27 +797,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
           </motion.div>
         </div>
       </section>
-
-      <Dialog open={showPaymentsModal} onOpenChange={setShowPaymentsModal}>
-        <DialogContent className="rounded-3xl max-w-md overflow-hidden">
-          <DialogHeader className="relative z-10">
-            <DialogTitle className="text-2xl font-bold text-gray-900 text-center">
-              Coming soon
-            </DialogTitle>
-            <DialogDescription className="text-center text-gray-600 mt-2">
-              Payments are coming back. Check back later or try the app free in the meantime.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-center pt-4 pb-2">
-            <Button
-              onClick={() => setShowPaymentsModal(false)}
-              className="rounded-2xl px-6 py-3 font-bold bg-lime-500 hover:bg-lime-600 text-white"
-            >
-              Close
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
@@ -883,6 +865,7 @@ function generateMockAnalysis(tone: Tone): AnalysisResult {
 
 const AppPage: React.FC = () => {
   const reduceMotion = useReducedMotion();
+  const { isPro } = useSubscriptionStatus();
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
@@ -933,11 +916,17 @@ const AppPage: React.FC = () => {
               </p>
             </div>
           </div>
-          <motion.div
-            className="px-4 py-2 rounded-full font-bold text-sm shadow-lg bg-lime-500 text-white"
-          >
-            Demo Mode
-          </motion.div>
+          {isPro ? (
+            <Badge className="bg-lime-500 text-white border-lime-600 text-xs font-bold">
+              PRO
+            </Badge>
+          ) : (
+            <motion.div
+              className="px-4 py-2 rounded-full font-bold text-sm shadow-lg bg-lime-500 text-white"
+            >
+              Demo Mode
+            </motion.div>
+          )}
         </div>
         <div className="flex justify-center mb-8">
           <motion.button
@@ -1245,6 +1234,9 @@ const NavLinkItem: React.FC<{
 
 const Navigation: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = useLocation().pathname;
+  const { isPro, isLoading } = useSubscriptionStatus();
+  const showProBadge = pathname === '/app' && !isLoading && isPro;
 
   const closeMenu = () => setMobileMenuOpen(false);
 
@@ -1272,6 +1264,11 @@ const Navigation: React.FC = () => {
               <NavLinkItem to="/signin" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 Sign In
               </NavLinkItem>
+              {showProBadge && (
+                <Badge className="ml-1 bg-lime-500 text-white border-lime-600 text-xs font-bold">
+                  PRO
+                </Badge>
+              )}
             </div>
             <button
               className="md:hidden"
@@ -1319,6 +1316,31 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </>
 );
 
+/** Protects /app: redirects to /signin if not signed in. */
+function AppRouteGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-muted-foreground">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/signin"
+        replace
+        state={{ message: 'Please sign in to use the app.' }}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
 /** Wrapper for the landing route: passes onAnalyze so "Analyze what happened" switches to app page. */
 function LandingRoute() {
   const navigate = useNavigate();
@@ -1337,10 +1359,13 @@ export default function DidIFkUpApp() {
         <SpeedInsights />
         <Routes>
           <Route path="/" element={<LandingRoute />} />
-          <Route path="/app" element={<Layout><AppPage /></Layout>} />
+          <Route path="/app" element={<Layout><AppRouteGuard><AppPage /></AppRouteGuard></Layout>} />
           <Route path="/stickers" element={<Layout><StickersPage /></Layout>} />
           <Route path="/pricing" element={<Layout><PricingPage /></Layout>} />
           <Route path="/signin" element={<Layout><SignInPage /></Layout>} />
+          <Route path="/signup" element={<Layout><SignUpPage /></Layout>} />
+          <Route path="/upgrade/success" element={<Layout><UpgradeSuccessPage /></Layout>} />
+          <Route path="/upgrade/cancel" element={<Layout><UpgradeCancelPage /></Layout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

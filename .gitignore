@@ -27,3 +27,5 @@ Thumbs.db
 npm-debug.log*
 .vercel
 .env*.local
+.vercel
+node_modules

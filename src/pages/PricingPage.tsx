@@ -1,12 +1,9 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Check, ArrowRight, Sparkles } from 'lucide-react';
+import { openPaymentLink } from '@/lib/paymentLink';
 
 export function PricingPage() {
-  const [showPaymentsModal, setShowPaymentsModal] = useState(false);
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 py-12 px-4">
       <div className="container mx-auto max-w-4xl">
@@ -67,7 +64,7 @@ export function PricingPage() {
               </li>
             </ul>
             <Button
-              onClick={() => setShowPaymentsModal(true)}
+              onClick={() => openPaymentLink()}
               className="w-full bg-gradient-to-r from-lime-500 to-teal-500 hover:from-lime-600 hover:to-teal-600 text-white rounded-2xl py-6 text-lg font-bold shadow-lg flex items-center justify-center gap-2"
             >
               <Sparkles className="w-5 h-5" />
@@ -75,27 +72,6 @@ export function PricingPage() {
             </Button>
           </div>
         </div>
-
-        <Dialog open={showPaymentsModal} onOpenChange={setShowPaymentsModal}>
-          <DialogContent className="rounded-3xl max-w-md overflow-hidden">
-            <DialogHeader className="relative z-10">
-              <DialogTitle className="text-2xl font-bold text-gray-900 text-center">
-                Coming soon
-              </DialogTitle>
-              <DialogDescription className="text-center text-gray-600 mt-2">
-                Payments are coming back. Check back later or try the app free in the meantime.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-center pt-4 pb-2">
-              <Button
-                onClick={() => setShowPaymentsModal(false)}
-                className="rounded-2xl px-6 py-3 font-bold bg-lime-500 hover:bg-lime-600 text-white"
-              >
-                Close
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         <div className="text-center">
           <Button asChild variant="ghost" className="text-gray-600 hover:text-lime-600">

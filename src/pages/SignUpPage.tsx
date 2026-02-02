@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
-export function SignInPage() {
-  const { user, isLoading, signIn } = useAuth();
+export function SignUpPage() {
+  const { user, isLoading, signUp } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const message = (location.state as { message?: string } | null)?.message;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +25,10 @@ export function SignInPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await signIn(email, password);
+      await signUp(email, password);
       navigate('/app', { replace: true });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Sign in failed');
+      setError(err instanceof Error ? err.message : 'Sign up failed');
     } finally {
       setSubmitting(false);
     }
@@ -54,10 +52,8 @@ export function SignInPage() {
         </div>
         <Card className="border-0 shadow-xl">
           <CardHeader>
-            <CardTitle className="text-xl">Sign in</CardTitle>
-            <CardDescription>
-              {message ?? 'Enter your email and password'}
-            </CardDescription>
+            <CardTitle className="text-xl">Sign up</CardTitle>
+            <CardDescription>Create an account with email and password</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -87,9 +83,11 @@ export function SignInPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  autoComplete="current-password"
+                  minLength={6}
+                  autoComplete="new-password"
                   disabled={submitting}
                 />
+                <p className="text-xs text-muted-foreground">At least 6 characters</p>
               </div>
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
@@ -99,13 +97,13 @@ export function SignInPage() {
                 className="w-full bg-lime-500 hover:bg-lime-600 text-white rounded-xl py-3 font-bold"
                 disabled={submitting}
               >
-                {submitting ? 'Signing in…' : 'Sign in'}
+                {submitting ? 'Creating account…' : 'Sign up'}
               </Button>
             </form>
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{' '}
-              <Link to="/signup" className="text-lime-600 hover:underline font-medium">
-                Sign up
+              Already have an account?{' '}
+              <Link to="/signin" className="text-lime-600 hover:underline font-medium">
+                Sign in
               </Link>
             </p>
           </CardContent>
