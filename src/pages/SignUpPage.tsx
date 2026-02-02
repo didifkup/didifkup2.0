@@ -5,14 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 
 export function SignUpPage() {
-  const { user, isLoading, signUp } = useAuth();
+  const { user, isLoading } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [emailConfirmMessage, setEmailConfirmMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -23,14 +25,30 @@ export function SignUpPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
+    setEmailConfirmMessage(null);
+    setLoading(true);
     try {
-      await signUp(email, password);
-      navigate('/app', { replace: true });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      console.log('[SignUp] result', { data, error });
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      if (data.session) {
+        console.log('[SignUp] success, session present');
+        navigate('/app', { replace: true });
+        return;
+      }
+      setEmailConfirmMessage('Check your email to confirm your account, then come back and sign in.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Sign up failed');
+      const message = err instanceof Error ? err.message : 'Sign up failed';
+      console.log('[SignUp] error', err);
+      setError(message);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
@@ -69,7 +87,7 @@ export function SignUpPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
-                  disabled={submitting}
+                  disabled={loading}
                 />
               </div>
               <div className="space-y-2">
@@ -85,20 +103,25 @@ export function SignUpPage() {
                   required
                   minLength={6}
                   autoComplete="new-password"
-                  disabled={submitting}
+                  disabled={loading}
                 />
                 <p className="text-xs text-muted-foreground">At least 6 characters</p>
               </div>
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
               <Button
                 type="submit"
                 className="w-full bg-lime-500 hover:bg-lime-600 text-white rounded-xl py-3 font-bold"
-                disabled={submitting}
+                disabled={loading}
               >
-                {submitting ? 'Creating account…' : 'Sign up'}
+                {loading ? 'Creating account…' : 'Sign up'}
               </Button>
+              {error && (
+                <p className="text-sm text-red-600 mt-2" role="alert">{error}</p>
+              )}
+              {emailConfirmMessage && (
+                <p className="text-sm text-lime-700 bg-lime-50 border border-lime-200 rounded-xl p-4 mt-2" role="status">
+                  {emailConfirmMessage}
+                </p>
+              )}
             </form>
             <p className="mt-4 text-center text-sm text-muted-foreground">
               Already have an account?{' '}

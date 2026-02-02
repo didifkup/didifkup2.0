@@ -19,12 +19,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Initial session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session ?? null);
       setUser(session?.user ?? null);
       setIsLoading(false);
     });
 
+    // Subscribe so UI reacts when auth changes (sign in, sign out, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session ?? null);
