@@ -18,7 +18,7 @@ export function SignUpPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      navigate('/app', { replace: true });
+      navigate('/account', { replace: true });
     }
   }, [user, isLoading, navigate]);
 
@@ -39,10 +39,10 @@ export function SignUpPage() {
       }
       if (data.session) {
         console.log('[SignUp] success, session present');
-        navigate('/app', { replace: true });
+        navigate('/account', { replace: true });
         return;
       }
-      setEmailConfirmMessage('Check your email to confirm your account, then come back and sign in.');
+      setEmailConfirmMessage('Account created. If you don\'t see a redirect, try signing in.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Sign up failed';
       console.log('[SignUp] error', err);

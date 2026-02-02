@@ -35,6 +35,7 @@ import { SignInPage } from '@/pages/SignInPage';
 import { SignUpPage } from '@/pages/SignUpPage';
 import { UpgradeSuccessPage } from '@/pages/UpgradeSuccessPage';
 import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
+import { AccountPage } from '@/pages/AccountPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
@@ -1235,10 +1236,49 @@ const NavLinkItem: React.FC<{
 const Navigation: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useLocation().pathname;
-  const { isPro, isLoading } = useSubscriptionStatus();
-  const showProBadge = pathname === '/app' && !isLoading && isPro;
+  const navigate = useNavigate();
+  const { user, profile, isLoading: authLoading, signOut } = useAuth();
+  const { isPro, isLoading: subLoading } = useSubscriptionStatus();
+  const showProBadge = pathname === '/app' && !subLoading && isPro;
+
+  const isProStatus = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing';
 
   const closeMenu = () => setMobileMenuOpen(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    closeMenu();
+    navigate('/', { replace: true });
+  };
+
+  const accountStatusEl = authLoading ? (
+    <span className="text-gray-400 text-sm">…</span>
+  ) : !user ? (
+    <NavLinkItem to="/signin" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors" onClick={closeMenu}>
+      Sign in
+    </NavLinkItem>
+  ) : (
+    <>
+      <NavLinkItem to="/account" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors" onClick={closeMenu}>
+        Account
+      </NavLinkItem>
+      <Badge
+        className={cn(
+          'text-xs font-bold',
+          isProStatus ? 'bg-lime-500 text-white border-lime-600' : 'bg-gray-200 text-gray-700 border-gray-300'
+        )}
+      >
+        {isProStatus ? 'Pro' : 'Free'}
+      </Badge>
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors"
+      >
+        Sign out
+      </button>
+    </>
+  );
 
   return (
     <>
@@ -1261,9 +1301,7 @@ const Navigation: React.FC = () => {
               <NavLinkItem to="/pricing" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 Pricing
               </NavLinkItem>
-              <NavLinkItem to="/signin" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
-                Sign In
-              </NavLinkItem>
+              {accountStatusEl}
               {showProBadge && (
                 <Badge className="ml-1 bg-lime-500 text-white border-lime-600 text-xs font-bold">
                   PRO
@@ -1297,9 +1335,36 @@ const Navigation: React.FC = () => {
                 <NavLinkItem to="/pricing" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
                   Pricing
                 </NavLinkItem>
-                <NavLinkItem to="/signin" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
-                  Sign In
-                </NavLinkItem>
+                {authLoading ? (
+                  <span className="block text-gray-400 text-sm py-2">…</span>
+                ) : !user ? (
+                  <NavLinkItem to="/signin" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
+                    Sign in
+                  </NavLinkItem>
+                ) : (
+                  <>
+                    <NavLinkItem to="/account" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
+                      Account
+                    </NavLinkItem>
+                    <div className="flex items-center gap-2 py-2">
+                      <Badge
+                        className={cn(
+                          'text-xs font-bold',
+                          isProStatus ? 'bg-lime-500 text-white border-lime-600' : 'bg-gray-200 text-gray-700 border-gray-300'
+                        )}
+                      >
+                        {isProStatus ? 'Pro' : 'Free'}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           )}
@@ -1341,6 +1406,25 @@ function AppRouteGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Reusable auth guard: redirects to /auth if not signed in. */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-muted-foreground">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace state={{ message: 'Please sign in.' }} />;
+  }
+
+  return <>{children}</>;
+}
+
 /** Wrapper for the landing route: passes onAnalyze so "Analyze what happened" switches to app page. */
 function LandingRoute() {
   const navigate = useNavigate();
@@ -1363,9 +1447,11 @@ export default function DidIFkUpApp() {
           <Route path="/stickers" element={<Layout><StickersPage /></Layout>} />
           <Route path="/pricing" element={<Layout><PricingPage /></Layout>} />
           <Route path="/signin" element={<Layout><SignInPage /></Layout>} />
+          <Route path="/auth" element={<Layout><SignInPage /></Layout>} />
           <Route path="/signup" element={<Layout><SignUpPage /></Layout>} />
           <Route path="/upgrade/success" element={<Layout><UpgradeSuccessPage /></Layout>} />
           <Route path="/upgrade/cancel" element={<Layout><UpgradeCancelPage /></Layout>} />
+          <Route path="/account" element={<Layout><RequireAuth><AccountPage /></RequireAuth></Layout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

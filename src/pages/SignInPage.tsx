@@ -18,7 +18,7 @@ export function SignInPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      navigate('/app', { replace: true });
+      navigate('/account', { replace: true });
     }
   }, [user, isLoading, navigate]);
 
@@ -28,7 +28,7 @@ export function SignInPage() {
     setSubmitting(true);
     try {
       await signIn(email, password);
-      navigate('/app', { replace: true });
+      navigate('/account', { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign in failed');
     } finally {

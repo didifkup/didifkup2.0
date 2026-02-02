@@ -5,8 +5,11 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   stripe_customer_id text,
+  stripe_subscription_id text,
   subscription_status text,  -- e.g. 'active', 'inactive', 'canceled'
-  current_period_end timestamptz
+  current_period_end timestamptz,
+  pro_status text,           -- 'pro' | 'past_due' | 'free'
+  pro_current_period_end timestamptz
 );
 
 -- Optional: ensure RLS is enabled (default for new tables in Supabase)
