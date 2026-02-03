@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
@@ -26,6 +26,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 import { BackgroundFX } from '@/components/BackgroundFX';
 import { CopyToast } from '@/components/CopyToast';
 import { DidIFkUpMascot } from '@/components/mascot/DidIFkUpMascot';
@@ -39,6 +47,8 @@ import { AccountPage } from '@/pages/AccountPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
+import { supabase } from '@/lib/supabaseClient';
+import { getOrCreateUsage, incrementUsage } from '@/usage/usage';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { cn, cardPremium } from '@/lib/utils';
@@ -867,12 +877,17 @@ function generateMockAnalysis(tone: Tone): AnalysisResult {
 const AppPage: React.FC = () => {
   const reduceMotion = useReducedMotion();
   const { isPro } = useSubscriptionStatus();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [spiralMode, setSpiralMode] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const [tone, setTone] = useState<Tone>('real');
+  const [usage, setUsage] = useState<{ analyses_used: number } | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const analyzeLock = useRef(false);
 
   const [happened, setHappened] = useState('');
   const [youDid, setYouDid] = useState('');
@@ -880,17 +895,54 @@ const AppPage: React.FC = () => {
   const [relationship, setRelationship] = useState('friend');
   const [context, setContext] = useState('texting');
 
+  const checksLeft = Math.max(0, 2 - (usage?.analyses_used ?? 0));
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUsage(null);
+      return;
+    }
+    getOrCreateUsage(supabase, user.id)
+      .then(setUsage)
+      .catch((err) => console.warn('[usage] preload failed:', err));
+  }, [user?.id]);
+
   const handleAnalyze = async () => {
-    setAnalyzing(true);
-    setMascotMood('loading');
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
-    
-    const mockResult = generateMockAnalysis(tone);
-    setResult(mockResult);
-    setMascotMood(mockResult.verdict.toLowerCase() as 'low' | 'medium' | 'high');
-    setAnalyzing(false);
+    if (analyzeLock.current || analyzing) return;
+    analyzeLock.current = true;
+    try {
+      if (!user?.id) {
+        navigate('/signin');
+        return;
+      }
+
+      const currentUsage = await getOrCreateUsage(supabase, user.id);
+      setUsage(currentUsage);
+      if (!isPro && currentUsage.analyses_used >= 2) {
+        setShowPaywall(true);
+        return;
+      }
+
+      setAnalyzing(true);
+      setMascotMood('loading');
+
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
+
+      const mockResult = generateMockAnalysis(tone);
+      setResult(mockResult);
+      setMascotMood(mockResult.verdict.toLowerCase() as 'low' | 'medium' | 'high');
+
+      if (!isPro) {
+        const updatedUsage = await incrementUsage(supabase, user.id);
+        setUsage(updatedUsage);
+      }
+    } catch (err) {
+      console.warn('[analysis] failed:', err);
+    } finally {
+      setAnalyzing(false);
+      analyzeLock.current = false;
+    }
   };
 
   const handleCopy = (text: string, key: string) => {
@@ -907,7 +959,19 @@ const AppPage: React.FC = () => {
       <div className="container mx-auto px-4 relative z-10">
         <div className="flex justify-between items-center mb-8 relative">
           <div className="flex items-center gap-4">
-            <DidIFkUpMascot mood={mascotMood} className="scale-75" onMoodCycle={setMascotMood} />
+            <div className="relative">
+              <DidIFkUpMascot mood={mascotMood} className="scale-75" onMoodCycle={setMascotMood} />
+              {!isPro && checksLeft === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: [0, -4, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute -top-3 -right-3 bg-white text-gray-700 text-xs font-bold px-3 py-1 rounded-full shadow-md border border-gray-200"
+                >
+                  Out of checks 😭
+                </motion.div>
+              )}
+            </div>
             <div>
               <h1 className="text-display text-3xl md:text-5xl text-gray-900">
                 Run it through DidIFkUp.
@@ -1073,6 +1137,18 @@ const AppPage: React.FC = () => {
                   )}
                 </Button>
               </motion.div>
+              {!isPro ? (
+                <p className="text-xs text-gray-500 text-center">
+                  Checks left: {checksLeft}/2
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 text-center">
+                  Checks left: Unlimited
+                </p>
+              )}
+              <p className="text-xs text-gray-400 text-center">
+                Free users get 2/day (or 2 total if we implemented total). Upgrade for unlimited.
+              </p>
             </div>
           </Card>
 
@@ -1218,6 +1294,36 @@ const AppPage: React.FC = () => {
           </div>
         </div>
       </div>
+      <Dialog open={showPaywall} onOpenChange={setShowPaywall}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Out of free checks</DialogTitle>
+            <DialogDescription>
+              You’ve used all 2 free analyses. Upgrade to keep going.
+            </DialogDescription>
+            <p className="text-sm text-gray-500">
+              You’ll be back here right after checkout.
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              className="bg-lime-500 hover:bg-lime-600 text-white"
+              onClick={() => {
+                setShowPaywall(false);
+                const paymentLinkUrl = import.meta.env.VITE_STRIPE_PAYMENT_LINK_URL;
+                if (paymentLinkUrl) {
+                  window.location.href = paymentLinkUrl;
+                } else {
+                  console.warn('[paywall] Missing VITE_STRIPE_PAYMENT_LINK_URL');
+                }
+              }}
+            >
+              Go Pro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
