@@ -1,22 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const ALLOWED_ORIGINS = new Set([
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:5175',
+/** Matches http://localhost:<any_port> */
+const LOCALHOST_ORIGIN_REGEX = /^http:\/\/localhost:\d+$/;
+
+const PRODUCTION_ORIGINS = new Set([
   'https://didifkup.vercel.app',
   'https://didifkup.com',
 ]);
 
+function isAllowedOrigin(origin: string): boolean {
+  return LOCALHOST_ORIGIN_REGEX.test(origin) || PRODUCTION_ORIGINS.has(origin);
+}
+
 /**
- * Sets CORS headers on the response. Uses allowlist; only sets Access-Control-Allow-Origin
- * when the request origin is in the allowlist.
+ * Sets CORS headers on the response. Only sets Access-Control-Allow-Origin when
+ * the request origin matches http://localhost:<port> or is in the production allowlist.
  */
 export function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   const origin = req.headers.origin;
   const originStr = typeof origin === 'string' ? origin : Array.isArray(origin) ? origin[0] : '';
 
-  if (originStr && ALLOWED_ORIGINS.has(originStr)) {
+  if (originStr && isAllowedOrigin(originStr)) {
     res.setHeader('Access-Control-Allow-Origin', originStr);
   }
 
