@@ -1,4 +1,4 @@
-import type { AnalyzeInput } from './analyzeSchema';
+import type { AnalyzeInput } from './analyzeSchema.js';
 
 /**
  * Builds the system + user prompt for OpenAI analyze.

@@ -4,15 +4,15 @@ import {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   OPENAI_API_KEY,
-} from './env';
-import { buildAnalyzePrompt } from './analyzePrompt';
+} from './env.js';
+import { buildAnalyzePrompt } from './analyzePrompt.js';
 import {
   analyzeInputSchema,
   analyzeOutputSchema,
   FALLBACK_OUTPUT,
   type AnalyzeInput,
   type AnalyzeOutput,
-} from './analyzeSchema';
+} from './analyzeSchema.js';
 
 const FREE_DAILY_LIMIT = 2;
 

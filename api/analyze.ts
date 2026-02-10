@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const { handleAnalyzePost } = await import('./_lib/analyzePost');
+    const { handleAnalyzePost } = await import('./_lib/analyzePost.js');
     return handleAnalyzePost(req, res);
   } catch (err) {
     console.error('[analyze] unexpected error:', err);
