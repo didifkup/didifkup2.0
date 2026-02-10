@@ -1,10 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import {
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  OPENAI_API_KEY,
-} from './env.js';
+import { getAnalyzeEnv } from './env.js';
 import { buildAnalyzePrompt } from './analyzePrompt.js';
 import {
   analyzeInputSchema,
@@ -16,11 +12,15 @@ import {
 
 const FREE_DAILY_LIMIT = 2;
 
-async function verifySupabaseUser(accessToken: string): Promise<{ id: string } | null> {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+async function verifySupabaseUser(
+  accessToken: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<{ id: string } | null> {
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      apikey: supabaseKey,
     },
   });
   if (!res.ok) return null;
@@ -80,12 +80,16 @@ async function enforceFreeLimit(
   return { ok: true };
 }
 
-async function callOpenAI(system: string, user: string): Promise<string> {
+async function callOpenAI(
+  system: string,
+  user: string,
+  openaiApiKey: string
+): Promise<string> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${openaiApiKey}`,
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
@@ -124,6 +128,8 @@ function parseOutput(raw: string): AnalyzeOutput | null {
 }
 
 export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse): Promise<VercelResponse> {
+  const env = getAnalyzeEnv();
+
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid Authorization header' });
@@ -133,7 +139,11 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
     return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
   }
 
-  const user = await verifySupabaseUser(accessToken);
+  const user = await verifySupabaseUser(
+    accessToken,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
   if (!user) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
   }
@@ -152,7 +162,7 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
   }
   const input: AnalyzeInput = inputResult.data;
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -174,7 +184,7 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
 
   let output: AnalyzeOutput;
   try {
-    const raw = await callOpenAI(system, userPrompt);
+    const raw = await callOpenAI(system, userPrompt, env.OPENAI_API_KEY);
     const parsed = parseOutput(raw);
     output = parsed ?? FALLBACK_OUTPUT;
     if (!parsed) {

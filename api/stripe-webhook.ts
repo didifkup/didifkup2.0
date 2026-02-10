@@ -1,14 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import {
-  STRIPE_SECRET_KEY,
-  STRIPE_WEBHOOK_SECRET,
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-} from './_lib/env';
+import { getStripeEnv } from './_lib/env.js';
 
-const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+const stripeEnv = getStripeEnv();
+const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
 
 /** Read raw body for Stripe signature verification (do not parse body). */
 function getRawBody(req: VercelRequest): Promise<Buffer> {
@@ -66,7 +62,7 @@ async function updateProfileByEmail(
     pro_current_period_end?: string | null;
   }
 ): Promise<void> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = createClient(stripeEnv.SUPABASE_URL, stripeEnv.SUPABASE_SERVICE_ROLE_KEY);
   const row: Record<string, unknown> = {
     pro_status: updates.pro_status,
     stripe_subscription_id: updates.stripe_subscription_id ?? null,
@@ -123,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(rawBody, sig, stripeEnv.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown';
     console.error('[stripe-webhook] signature verification failed:', msg);

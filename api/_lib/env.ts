@@ -1,24 +1,52 @@
 /**
  * Server-side env vars (process.env).
- * Throws clear errors when required vars are missing.
+ * Scoped getters validate only the vars needed by each route.
  */
 
 function get(key: string): string | undefined {
   return process.env[key];
 }
 
-function requireEnv(key: string): string {
-  const val = get(key);
+export function mustGet(name: string): string {
+  const val = get(name);
   if (!val || val.trim() === '') {
-    throw new Error(`[env] Missing or empty required var: ${key}. Set it in Vercel project settings or .env`);
+    throw new Error(`[env] Missing or empty required var: ${name}. Set it in Vercel project settings or .env`);
   }
   return val;
 }
 
-export const STRIPE_SECRET_KEY = requireEnv('STRIPE_SECRET_KEY');
-export const STRIPE_WEBHOOK_SECRET = requireEnv('STRIPE_WEBHOOK_SECRET');
-export const STRIPE_PRICE_PRO_MONTHLY = requireEnv('STRIPE_PRICE_PRO_MONTHLY');
-export const SUPABASE_URL = requireEnv('SUPABASE_URL');
-export const SUPABASE_SERVICE_ROLE_KEY = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
-export const SITE_URL = requireEnv('SITE_URL');
-export const OPENAI_API_KEY = requireEnv('OPENAI_API_KEY');
+export interface AnalyzeEnv {
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  OPENAI_API_KEY: string;
+}
+
+/** Validate only vars needed by /api/analyze. Does not require STRIPE_*. */
+export function getAnalyzeEnv(): AnalyzeEnv {
+  return {
+    SUPABASE_URL: mustGet('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: mustGet('SUPABASE_SERVICE_ROLE_KEY'),
+    OPENAI_API_KEY: mustGet('OPENAI_API_KEY'),
+  };
+}
+
+export interface StripeEnv {
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_PRICE_PRO_MONTHLY: string;
+  SITE_URL: string;
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+}
+
+/** Validate Stripe + Supabase vars needed for billing/webhooks. */
+export function getStripeEnv(): StripeEnv {
+  return {
+    STRIPE_SECRET_KEY: mustGet('STRIPE_SECRET_KEY'),
+    STRIPE_WEBHOOK_SECRET: mustGet('STRIPE_WEBHOOK_SECRET'),
+    STRIPE_PRICE_PRO_MONTHLY: mustGet('STRIPE_PRICE_PRO_MONTHLY'),
+    SITE_URL: mustGet('SITE_URL'),
+    SUPABASE_URL: mustGet('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: mustGet('SUPABASE_SERVICE_ROLE_KEY'),
+  };
+}

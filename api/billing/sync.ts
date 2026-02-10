@@ -1,20 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import {
-  STRIPE_SECRET_KEY,
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-} from '../_lib/env';
+import { getStripeEnv } from '../_lib/env.js';
 
 /** Verify Supabase user via Auth REST API. Returns user with id and email or null. */
 async function verifySupabaseUser(
-  accessToken: string
+  accessToken: string,
+  supabaseUrl: string,
+  supabaseKey: string
 ): Promise<{ id: string; email: string | undefined } | null> {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      apikey: supabaseKey,
     },
   });
   if (!res.ok) return null;
@@ -23,6 +21,8 @@ async function verifySupabaseUser(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const env = getStripeEnv();
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -37,18 +37,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
   }
 
-  const user = await verifySupabaseUser(accessToken);
+  const user = await verifySupabaseUser(
+    accessToken,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
   if (!user) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
   let stripeCustomerId: string | null = null;
   let subscriptionStatus: 'active' | 'inactive' = 'inactive';
   let currentPeriodEnd: string | null = null;
 
   if (user.email?.trim()) {
-    const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
     const customers = await stripe.customers.list({
       email: user.email.trim(),
       limit: 1,

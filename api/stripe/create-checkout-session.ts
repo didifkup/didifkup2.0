@@ -1,19 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
-import {
-  STRIPE_SECRET_KEY,
-  STRIPE_PRICE_PRO_MONTHLY,
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  SITE_URL,
-} from '../_lib/env';
+import { getStripeEnv } from '../_lib/env.js';
 
 /** Verify Supabase user via REST API. Returns user or null. */
-async function verifySupabaseUser(accessToken: string): Promise<{ id: string; email?: string } | null> {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+async function verifySupabaseUser(
+  accessToken: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<{ id: string; email?: string } | null> {
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      apikey: supabaseKey,
     },
   });
   if (!res.ok) return null;
@@ -22,6 +20,8 @@ async function verifySupabaseUser(accessToken: string): Promise<{ id: string; em
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const env = getStripeEnv();
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -36,21 +36,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
   }
 
-  const user = await verifySupabaseUser(accessToken);
+  const user = await verifySupabaseUser(
+    accessToken,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
   if (!user) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
   }
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
-  const successUrl = `${SITE_URL}/upgrade/success`;
-  const cancelUrl = `${SITE_URL}/upgrade/cancel`;
+  const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+  const successUrl = `${env.SITE_URL}/upgrade/success`;
+  const cancelUrl = `${env.SITE_URL}/upgrade/cancel`;
 
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [
         {
-          price: STRIPE_PRICE_PRO_MONTHLY,
+          price: env.STRIPE_PRICE_PRO_MONTHLY,
           quantity: 1,
         },
       ],
