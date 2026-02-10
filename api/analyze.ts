@@ -3,7 +3,11 @@
  *
  * Analyzes a social situation using OpenAI. Requires auth, enforces free/pro limits.
  *
- * Local test (replace TOKEN and adjust URL):
+ * Test preflight (OPTIONS) locally:
+ *   curl -X OPTIONS https://didifkup.vercel.app/api/analyze -H "Origin: http://localhost:5173" -v
+ *   (expect 204, Access-Control-Allow-Origin: http://localhost:5173)
+ *
+ * Test POST (replace TOKEN and adjust URL):
  *   curl -X POST http://localhost:3000/api/analyze \
  *     -H "Content-Type: application/json" \
  *     -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" \
@@ -156,8 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).send('Method Not Allowed');
   }
 
   try {

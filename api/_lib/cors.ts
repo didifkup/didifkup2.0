@@ -13,25 +13,23 @@ function isAllowedOrigin(origin: string): boolean {
 }
 
 /**
- * Sets CORS headers on the response. Never throws.
- * Only sets Access-Control-Allow-Origin when the request origin matches
- * http://localhost:<port> or is in the production allowlist.
+ * Sets CORS headers on the response. NEVER throws.
+ * Allow-Origin: any http://localhost:<port>, https://didifkup.vercel.app, https://didifkup.com
  */
 export function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
+  if (!req || !res) return;
   try {
     const origin = req.headers?.origin;
     const originStr = typeof origin === 'string' ? origin : Array.isArray(origin) ? origin[0] : '';
-
     if (originStr && isAllowedOrigin(originStr)) {
       res.setHeader('Access-Control-Allow-Origin', originStr);
     }
-
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Vary', 'Origin');
   } catch {
-    // never throw — CORS is best-effort
+    /* never throw */
   }
 }
 
