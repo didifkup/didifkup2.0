@@ -9,6 +9,12 @@ import {
   type AnalyzeInput,
   type AnalyzeOutput,
 } from './analyzeSchema.js';
+import {
+  computeInputHash,
+  checkScenarioCooldown,
+  recordScenarioSeen,
+} from './scenarioCooldown.js';
+import { recordScenarioAndStreak } from './scenarioPersistence.js';
 
 const FREE_DAILY_LIMIT = 2;
 
@@ -173,10 +179,20 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
   const subStatus = profile?.subscription_status ?? null;
   const isPro = subStatus === 'active' || subStatus === 'trialing';
 
+  const inputHash = computeInputHash(input);
+
   if (!isPro) {
     const limitResult = await enforceFreeLimit(supabase, user.id);
     if (!limitResult.ok) {
       return res.status(402).json({ error: 'LIMIT', message: 'Free limit reached' });
+    }
+    const cooldownResult = await checkScenarioCooldown(supabase, user.id, inputHash);
+    if (!cooldownResult.ok) {
+      return res.status(429).json({
+        error: 'COOLDOWN',
+        message: 'You already checked this recently.',
+        retry_after_hours: cooldownResult.retryAfterHours,
+      });
     }
   }
 
@@ -193,6 +209,18 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
   } catch (err) {
     console.error('[analyze] OpenAI error:', err instanceof Error ? err.message : err);
     output = FALLBACK_OUTPUT;
+  }
+
+  try {
+    await recordScenarioSeen(supabase, user.id, inputHash);
+  } catch {
+    /* non-blocking */
+  }
+
+  try {
+    await recordScenarioAndStreak(supabase, user.id, input, inputHash, output);
+  } catch {
+    /* non-blocking */
   }
 
   return res.status(200).json(output);

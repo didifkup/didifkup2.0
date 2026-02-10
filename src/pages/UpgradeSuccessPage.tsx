@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Sparkles } from 'lucide-react';
@@ -6,8 +6,26 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export function UpgradeSuccessPage() {
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, refreshProfile } = useAuth();
   const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) return;
+    let cancelled = false;
+    fetch('/api/billing/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(() => {
+        if (!cancelled) refreshProfile();
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session?.access_token, refreshProfile]);
 
   const handleUnlockPro = async () => {
     const token = session?.access_token;
@@ -24,6 +42,7 @@ export function UpgradeSuccessPage() {
           Authorization: `Bearer ${token}`,
         },
       });
+      await refreshProfile();
     } finally {
       setSyncing(false);
     }

@@ -61,3 +61,16 @@ export class LimitError extends Error {
     Object.setPrototypeOf(this, LimitError.prototype);
   }
 }
+
+/** Thrown when scenario cooldown applies (429) */
+export class CooldownError extends Error {
+  readonly name = 'CooldownError';
+  readonly status = 429;
+  readonly retryAfterHours: number;
+
+  constructor(message = 'You already checked this recently.', retryAfterHours = 6) {
+    super(message);
+    this.retryAfterHours = retryAfterHours;
+    Object.setPrototypeOf(this, CooldownError.prototype);
+  }
+}

@@ -48,8 +48,10 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { analyzeSituation } from '@/lib/analyzeApi';
-import { LimitError } from '@/lib/analyzeTypes';
+import { LimitError, CooldownError } from '@/lib/analyzeTypes';
 import { adaptAnalysisResult, type AdaptedAnalysis } from '@/lib/analyzeAdapter';
+import { OffRamp, type OffRampData } from '@/components/OffRamp';
+import { shouldShowOffRampToday, setLastShownDate, setSkipOffRamp, getTodayKey } from '@/lib/offrampStorage';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { cn, cardPremium } from '@/lib/utils';
@@ -839,12 +841,15 @@ const AppPage: React.FC = () => {
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AdaptedAnalysis | null>(null);
+  const [pendingResult, setPendingResult] = useState<AdaptedAnalysis | null>(null);
+  const [showOffRamp, setShowOffRamp] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [spiralMode, setSpiralMode] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const [tone, setTone] = useState<Tone>('real');
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showCooldown, setShowCooldown] = useState(false);
   const analyzeLock = useRef(false);
 
   const [happened, setHappened] = useState('');
@@ -862,6 +867,8 @@ const AppPage: React.FC = () => {
 
     analyzeLock.current = true;
     setApiError(null);
+    setShowOffRamp(false);
+    setPendingResult(null);
     setAnalyzing(true);
     setMascotMood('loading');
 
@@ -876,11 +883,20 @@ const AppPage: React.FC = () => {
       });
 
       const adapted = adaptAnalysisResult(apiResult);
-      setResult(adapted);
       setMascotMood(adapted.verdict.toLowerCase() as 'low' | 'medium' | 'high');
+
+      if (shouldShowOffRampToday()) {
+        setPendingResult(adapted);
+        setShowOffRamp(true);
+      } else {
+        setResult(adapted);
+        setPendingResult(null);
+      }
     } catch (err) {
       if (err instanceof LimitError) {
         setShowPaywall(true);
+      } else if (err instanceof CooldownError) {
+        setShowCooldown(true);
       } else {
         setApiError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       }
@@ -895,6 +911,14 @@ const AppPage: React.FC = () => {
     navigator.clipboard.writeText(text);
     setCopiedIndex(key);
     setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const handleOffRampDone = (data: OffRampData) => {
+    setLastShownDate(getTodayKey());
+    if (data.skipNextTime) setSkipOffRamp(true);
+    if (pendingResult) setResult(pendingResult);
+    setPendingResult(null);
+    setShowOffRamp(false);
   };
 
   return (
@@ -1077,8 +1101,11 @@ const AppPage: React.FC = () => {
             </div>
           </Card>
 
-          <div>
-            {apiError ? (
+          <div className="flex flex-col gap-8">
+            {showOffRamp && (
+              <OffRamp open={showOffRamp} onDone={handleOffRampDone} />
+            )}
+            {!showOffRamp && (apiError ? (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -1260,10 +1287,43 @@ const AppPage: React.FC = () => {
                   </p>
                 </Card>
               </motion.div>
-            )}
+            ))}
           </div>
         </div>
       </div>
+      <Dialog open={showCooldown} onOpenChange={setShowCooldown}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Already checked</DialogTitle>
+            <DialogDescription>
+              You already checked this recently.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setShowCooldown(false);
+                setShowOffRamp(true);
+              }}
+            >
+              Do the calm-down flow
+            </Button>
+            <Button
+              type="button"
+              className="w-full bg-lime-500 hover:bg-lime-600 text-white"
+              onClick={() => {
+                setShowCooldown(false);
+                openPaymentLink();
+              }}
+            >
+              Go Pro to re-check
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showPaywall} onOpenChange={setShowPaywall}>
         <DialogContent className="rounded-2xl">
           <DialogHeader>

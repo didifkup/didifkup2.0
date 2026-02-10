@@ -48,7 +48,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
   let stripeCustomerId: string | null = null;
-  let subscriptionStatus: 'active' | 'inactive' = 'inactive';
+  let stripeSubscriptionId: string | null = null;
+  let subscriptionStatus: 'active' | 'past_due' | 'inactive' = 'inactive';
   let currentPeriodEnd: string | null = null;
 
   if (user.email?.trim()) {
@@ -69,10 +70,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const activeSub = subs.data.find(
         (s) => s.status === 'active' || s.status === 'trialing'
       );
-      if (activeSub) {
-        subscriptionStatus = 'active';
-        currentPeriodEnd = activeSub.current_period_end
-          ? new Date(activeSub.current_period_end * 1000).toISOString()
+      const pastDueSub = subs.data.find((s) => s.status === 'past_due');
+      const sub = activeSub ?? pastDueSub ?? subs.data[0];
+
+      if (sub) {
+        if (sub.status === 'active' || sub.status === 'trialing') {
+          subscriptionStatus = 'active';
+        } else if (sub.status === 'past_due') {
+          subscriptionStatus = 'past_due';
+        }
+        stripeSubscriptionId = sub.id;
+        currentPeriodEnd = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
       }
     }
@@ -83,9 +92,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     subscription_status: subscriptionStatus,
     current_period_end: currentPeriodEnd,
   };
-  if (stripeCustomerId !== null) {
-    row.stripe_customer_id = stripeCustomerId;
-  }
+  if (stripeCustomerId != null) row.stripe_customer_id = stripeCustomerId;
+  if (stripeSubscriptionId != null) row.stripe_subscription_id = stripeSubscriptionId;
 
   await supabase.from('profiles').upsert(row, { onConflict: 'id' });
 
