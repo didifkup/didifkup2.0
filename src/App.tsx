@@ -613,7 +613,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
           <h1 className="text-display text-5xl md:text-7xl text-gray-900 mb-6 max-w-4xl mx-auto">
             Did I fk that up…<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-500 to-teal-500">
-              …or am I spiraling for absolutely no reason?
+              or am I spiraling for absolutely no reason?
             </span>
           </h1>
           <p className="text-2xl md:text-3xl text-gray-700 mb-8 max-w-3xl mx-auto font-medium leading-snug">
