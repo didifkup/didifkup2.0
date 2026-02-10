@@ -62,27 +62,29 @@ const FALLBACK_INTERPRETATIONS: Array<{ label: InterpretationLabel; text: string
   { label: 'less_likely', text: 'Worst case, a quick check-in never hurt anyone.' },
 ];
 
-function isValidLabel(s: string): s is InterpretationLabel {
-  return s === 'most_likely' || s === 'also_possible' || s === 'less_likely';
+/** Type guard: validates label is one of the three allowed values. */
+function isInterpretationLabel(v: unknown): v is InterpretationLabel {
+  return typeof v === 'string' && (v === 'most_likely' || v === 'also_possible' || v === 'less_likely');
 }
 
 function ensureInterpretations(arr: unknown): Array<{ label: InterpretationLabel; text: string }> {
-  if (!Array.isArray(arr) || arr.length === 0) return FALLBACK_INTERPRETATIONS;
+  if (!Array.isArray(arr) || arr.length === 0) return [...FALLBACK_INTERPRETATIONS];
 
   const byLabel = new Map<InterpretationLabel, string>();
   for (const item of arr) {
     if (!item || typeof item !== 'object') continue;
-    const label = (item as { label?: unknown }).label;
-    const text = (item as { text?: unknown }).text;
-    if (!isValidLabel(String(label ?? ''))) continue;
-    const trimmed = typeof text === 'string' ? text.trim() : '';
+    const obj = item as { label?: unknown; text?: unknown };
+    const label = obj.label;
+    if (!isInterpretationLabel(label)) continue;
+    const textRaw = obj.text;
+    const trimmed = typeof textRaw === 'string' ? textRaw.trim() : '';
     if (!trimmed) continue;
     byLabel.set(label, trimmed);
   }
 
   const result: Array<{ label: InterpretationLabel; text: string }> = [];
   for (const label of INTERPRETATION_ORDER) {
-    const text = byLabel.get(label) ?? FALLBACK_INTERPRETATIONS.find((i) => i.label === label)!.text;
+    const text = byLabel.get(label) ?? FALLBACK_INTERPRETATIONS.find((i) => i.label === label)?.text ?? '';
     result.push({ label, text });
   }
   return result;
