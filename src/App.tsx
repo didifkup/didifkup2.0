@@ -47,8 +47,9 @@ import { AccountPage } from '@/pages/AccountPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
-import { supabase } from '@/lib/supabaseClient';
-import { getOrCreateUsage, incrementUsage } from '@/usage/usage';
+import { analyzeSituation } from '@/lib/analyzeApi';
+import { LimitError } from '@/lib/analyzeTypes';
+import { adaptAnalysisResult, type AdaptedAnalysis } from '@/lib/analyzeAdapter';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { cn, cardPremium } from '@/lib/utils';
@@ -57,16 +58,28 @@ type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 type Tone = 'nice' | 'real' | 'savage';
 
 
+/** Legacy shape for demo/example/ShareCard — verdict, summary, reasons, nextMove, followUpTexts */
 interface AnalysisResult {
   verdict: RiskLevel;
   summary: string;
   reasons: string[];
   nextMove: string;
-  followUpTexts: {
-    soft: string;
-    neutral: string;
-    firm: string;
+  followUpTexts: { soft: string; neutral: string; firm: string };
+}
+
+function adaptedToLegacy(a: AdaptedAnalysis): AnalysisResult {
+  return {
+    verdict: a.verdict,
+    summary: a.summary,
+    reasons: a.reasons,
+    nextMove: a.nextMove,
+    followUpTexts: a.followUpTabs,
   };
+}
+
+/** Form tone (nice/real/savage) → API tone (soft/neutral/firm) */
+function formToneToApi(tone: Tone): 'soft' | 'neutral' | 'firm' {
+  return tone === 'nice' ? 'soft' : tone === 'savage' ? 'firm' : 'neutral';
 }
 
 const VerdictBadge: React.FC<{ level: RiskLevel; showConfetti?: boolean }> = ({ level, showConfetti = false }) => {
@@ -113,12 +126,19 @@ const VerdictBadge: React.FC<{ level: RiskLevel; showConfetti?: boolean }> = ({ 
   );
 };
 
-const ConfidenceMeter: React.FC<{ level: RiskLevel }> = ({ level }) => {
+function confidenceToLevel(n: number): RiskLevel {
+  if (n <= 0.5) return 'LOW';
+  if (n <= 0.8) return 'MEDIUM';
+  return 'HIGH';
+}
+
+const ConfidenceMeter: React.FC<{ level?: RiskLevel; confidenceNumber?: number }> = ({ level, confidenceNumber }) => {
   const reduceMotion = useReducedMotion();
+  const activeLevel = level ?? (confidenceNumber != null ? confidenceToLevel(confidenceNumber) : 'MEDIUM');
   const segments = [
-    { label: 'LOW', active: level === 'LOW', color: 'bg-green-500' },
-    { label: 'MED', active: level === 'MEDIUM', color: 'bg-orange-500' },
-    { label: 'HIGH', active: level === 'HIGH', color: 'bg-red-500' },
+    { label: 'LOW', active: activeLevel === 'LOW', color: 'bg-green-500' },
+    { label: 'MED', active: activeLevel === 'MEDIUM', color: 'bg-orange-500' },
+    { label: 'HIGH', active: activeLevel === 'HIGH', color: 'bg-red-500' },
   ];
 
   return (
@@ -812,80 +832,18 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
   );
 };
 
-/** Mock analysis function — returns a demo result after a delay */
-function generateMockAnalysis(tone: Tone): AnalysisResult {
-  const verdicts: RiskLevel[] = ['LOW', 'MEDIUM', 'HIGH'];
-  const verdict = verdicts[Math.floor(Math.random() * verdicts.length)];
-  
-  const summaries: Record<RiskLevel, string[]> = {
-    LOW: [
-      "You're overthinking this. You're fine.",
-      "Honestly? Not a big deal at all.",
-      "This is your anxiety talking, not reality."
-    ],
-    MEDIUM: [
-      "It's awkward but recoverable.",
-      "Could go either way — tread lightly.",
-      "Not ideal, but not the end of the world."
-    ],
-    HIGH: [
-      "Yeah... this one's a bit rough.",
-      "You might want to do some damage control.",
-      "This needs addressing sooner rather than later."
-    ]
-  };
-
-  const reasons: Record<RiskLevel, string[]> = {
-    LOW: [
-      "The context makes your response totally reasonable",
-      "They probably didn't even notice what you're worried about",
-      "Most people wouldn't think twice about this"
-    ],
-    MEDIUM: [
-      "The timing wasn't great",
-      "Your tone might have come across differently than intended",
-      "There's some ambiguity that could be misread"
-    ],
-    HIGH: [
-      "The other person's reaction suggests they're upset",
-      "This touched on something sensitive",
-      "The silence is probably not a good sign"
-    ]
-  };
-
-  const nextMoves: Record<RiskLevel, string> = {
-    LOW: "Do nothing — seriously, you're good.",
-    MEDIUM: "Give it a day, then send a casual follow-up.",
-    HIGH: "Address it directly — waiting will make it worse."
-  };
-
-  const toneModifiers: Record<Tone, { soft: string; neutral: string; firm: string }> = {
-    nice: { soft: "Hey, just thinking about you 💛", neutral: "Hope you're doing okay!", firm: "Can we chat when you have a moment?" },
-    real: { soft: "Hey, wanted to check in", neutral: "Hey, how's it going?", firm: "We should probably talk about earlier" },
-    savage: { soft: "So... we good?", neutral: "Yo, what's up", firm: "Alright let's address the elephant in the room" }
-  };
-
-  return {
-    verdict,
-    summary: summaries[verdict][Math.floor(Math.random() * summaries[verdict].length)],
-    reasons: reasons[verdict],
-    nextMove: nextMoves[verdict],
-    followUpTexts: toneModifiers[tone]
-  };
-}
-
 const AppPage: React.FC = () => {
   const reduceMotion = useReducedMotion();
   const { isPro } = useSubscriptionStatus();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<AdaptedAnalysis | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [spiralMode, setSpiralMode] = useState(false);
   const [mascotMood, setMascotMood] = useState<'idle' | 'loading' | 'low' | 'medium' | 'high'>('idle');
   const [tone, setTone] = useState<Tone>('real');
-  const [usage, setUsage] = useState<{ analyses_used: number } | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const analyzeLock = useRef(false);
 
@@ -895,50 +853,38 @@ const AppPage: React.FC = () => {
   const [relationship, setRelationship] = useState('friend');
   const [context, setContext] = useState('texting');
 
-  const checksLeft = Math.max(0, 2 - (usage?.analyses_used ?? 0));
-
-  useEffect(() => {
-    if (!user?.id) {
-      setUsage(null);
-      return;
-    }
-    getOrCreateUsage(supabase, user.id)
-      .then(setUsage)
-      .catch((err) => console.warn('[usage] preload failed:', err));
-  }, [user?.id]);
-
   const handleAnalyze = async () => {
     if (analyzeLock.current || analyzing) return;
+    if (!user?.id) {
+      navigate('/signin');
+      return;
+    }
+
     analyzeLock.current = true;
+    setApiError(null);
+    setAnalyzing(true);
+    setMascotMood('loading');
+
     try {
-      if (!user?.id) {
-        navigate('/signin');
-        return;
-      }
+      const apiResult = await analyzeSituation({
+        happened: happened.trim(),
+        youDid: youDid.trim(),
+        theyDid: theyDid.trim(),
+        relationship: relationship || null,
+        context: context || null,
+        tone: formToneToApi(tone),
+      });
 
-      const currentUsage = await getOrCreateUsage(supabase, user.id);
-      setUsage(currentUsage);
-      if (!isPro && currentUsage.analyses_used >= 2) {
-        setShowPaywall(true);
-        return;
-      }
-
-      setAnalyzing(true);
-      setMascotMood('loading');
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
-
-      const mockResult = generateMockAnalysis(tone);
-      setResult(mockResult);
-      setMascotMood(mockResult.verdict.toLowerCase() as 'low' | 'medium' | 'high');
-
-      if (!isPro) {
-        const updatedUsage = await incrementUsage(supabase, user.id);
-        setUsage(updatedUsage);
-      }
+      const adapted = adaptAnalysisResult(apiResult);
+      setResult(adapted);
+      setMascotMood(adapted.verdict.toLowerCase() as 'low' | 'medium' | 'high');
     } catch (err) {
-      console.warn('[analysis] failed:', err);
+      if (err instanceof LimitError) {
+        setShowPaywall(true);
+      } else {
+        setApiError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      }
+      setResult(null);
     } finally {
       setAnalyzing(false);
       analyzeLock.current = false;
@@ -959,19 +905,7 @@ const AppPage: React.FC = () => {
       <div className="container mx-auto px-4 relative z-10">
         <div className="flex justify-between items-center mb-8 relative">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <DidIFkUpMascot mood={mascotMood} className="scale-75" onMoodCycle={setMascotMood} />
-              {!isPro && checksLeft === 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: [0, -4, 0] }}
-                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute -top-3 -right-3 bg-white text-gray-700 text-xs font-bold px-3 py-1 rounded-full shadow-md border border-gray-200"
-                >
-                  Out of checks 😭
-                </motion.div>
-              )}
-            </div>
+            <DidIFkUpMascot mood={mascotMood} className="scale-75" onMoodCycle={setMascotMood} />
             <div>
               <h1 className="text-display text-3xl md:text-5xl text-gray-900">
                 Run it through DidIFkUp.
@@ -1137,23 +1071,36 @@ const AppPage: React.FC = () => {
                   )}
                 </Button>
               </motion.div>
-              {!isPro ? (
-                <p className="text-xs text-gray-500 text-center">
-                  Checks left: {checksLeft}/2
-                </p>
-              ) : (
-                <p className="text-xs text-gray-500 text-center">
-                  Checks left: Unlimited
-                </p>
-              )}
               <p className="text-xs text-gray-400 text-center">
-                Free users get 2/day (or 2 total if we implemented total). Upgrade for unlimited.
+                {isPro ? 'Unlimited checks' : 'Free: 2 checks per day. Upgrade for unlimited.'}
               </p>
             </div>
           </Card>
 
           <div>
-            {result ? (
+            {apiError ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="min-h-[600px]"
+              >
+                <Card className={cn(cardPremium, "p-8 border-red-200/80 shadow-xl bg-white min-h-[600px] flex flex-col items-center justify-center")}>
+                  <div className="card-premium-shine absolute inset-0 rounded-3xl" />
+                  <div className="relative z-10 text-center max-w-md">
+                    <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h3>
+                    <p className="text-gray-600 mb-6">{apiError}</p>
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl font-bold"
+                      onClick={() => setApiError(null)}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            ) : result ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -1166,10 +1113,33 @@ const AppPage: React.FC = () => {
                     <div className="flex justify-center mb-6">
                       <VerdictBadge level={result.verdict} showConfetti={true} />
                     </div>
-                    <ConfidenceMeter level={result.verdict} />
+                    <ConfidenceMeter confidenceNumber={result.confidenceNumber} />
                     <p className="text-2xl text-center mb-8 text-gray-800 font-medium mt-6">
                       {result.summary}
                     </p>
+                    <div className="space-y-3 mb-8">
+                        <h4 className="font-bold text-xl text-gray-900">What&apos;s probably happening</h4>
+                        {result.interpretations.map((interp, i) => {
+                          const labelText =
+                            interp.label === 'most_likely'
+                              ? 'Most likely'
+                              : interp.label === 'also_possible'
+                                ? 'Also possible'
+                                : 'Less likely';
+                          return (
+                            <motion.div
+                              key={interp.label}
+                              initial={{ opacity: 0, x: -16 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.06, type: 'spring', stiffness: 400, damping: 30 }}
+                              className="flex flex-col gap-1 sm:flex-row sm:items-start bg-gray-50/80 p-4 rounded-2xl"
+                            >
+                              <span className="text-sm font-semibold text-purple-600 shrink-0 sm:w-24">{labelText}</span>
+                              <p className="text-lg text-gray-700 leading-relaxed">{interp.text}</p>
+                            </motion.div>
+                          );
+                        })}
+                    </div>
                     <div className="space-y-4 mb-8">
                       {result.reasons.map((reason, i) => (
                         <motion.div
@@ -1196,7 +1166,7 @@ const AppPage: React.FC = () => {
                           <TabsTrigger value="neutral" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-md transition-all">Neutral</TabsTrigger>
                           <TabsTrigger value="firm" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-md transition-all">Firm</TabsTrigger>
                         </TabsList>
-                        {Object.entries(result.followUpTexts).map(([key, text]) => (
+                        {Object.entries(result.followUpTabs).map(([key, text]) => (
                           <TabsContent key={key} value={key}>
                             <div className="flex items-center gap-2 bg-gray-100 p-4 rounded-2xl">
                               <p className="flex-1 text-gray-800 leading-relaxed">{text}</p>
@@ -1240,7 +1210,7 @@ const AppPage: React.FC = () => {
                         </Button>
                       </motion.div>
                     </div>
-                    <ShareCard result={result} tone={tone} />
+                    <ShareCard result={adaptedToLegacy(result)} tone={tone} />
                   </div>
                 </Card>
               </motion.div>
@@ -1311,12 +1281,7 @@ const AppPage: React.FC = () => {
               className="bg-lime-500 hover:bg-lime-600 text-white"
               onClick={() => {
                 setShowPaywall(false);
-                const paymentLinkUrl = import.meta.env.VITE_STRIPE_PAYMENT_LINK_URL;
-                if (paymentLinkUrl) {
-                  window.location.href = paymentLinkUrl;
-                } else {
-                  console.warn('[paywall] Missing VITE_STRIPE_PAYMENT_LINK_URL');
-                }
+                openPaymentLink();
               }}
             >
               Go Pro

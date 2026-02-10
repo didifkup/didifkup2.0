@@ -27,6 +27,12 @@ React + TypeScript + Vite app with Tailwind CSS v4 and a shadcn-style UI compone
    npm run dev
    ```
 
+   For local `/api/*` calls (e.g. `/api/analyze`), run **both** terminals:
+   - **Terminal 1:** `npm run dev` — Vite frontend at http://localhost:5173
+   - **Terminal 2:** `npm run dev:api` — Vercel serverless at http://localhost:3000
+
+   Vite proxies `/api` to the Vercel dev server, so relative API URLs work.
+
 3. **Build for production**:
 
    ```bash

@@ -21,3 +21,4 @@ export const STRIPE_PRICE_PRO_MONTHLY = requireEnv('STRIPE_PRICE_PRO_MONTHLY');
 export const SUPABASE_URL = requireEnv('SUPABASE_URL');
 export const SUPABASE_SERVICE_ROLE_KEY = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 export const SITE_URL = requireEnv('SITE_URL');
+export const OPENAI_API_KEY = requireEnv('OPENAI_API_KEY');
