@@ -24,7 +24,7 @@ import {
   type AnalyzeInput,
   type AnalyzeOutput,
 } from './_lib/analyzeSchema';
-import { setCorsHeaders, handleOptions } from './_lib/cors';
+import { setCorsHeaders } from './_lib/cors';
 
 const FREE_DAILY_LIMIT = 2;
 
@@ -149,81 +149,85 @@ function parseOutput(raw: string): AnalyzeOutput | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === 'OPTIONS') {
-    handleOptions(req, res);
-    return;
-  }
-
   setCorsHeaders(req, res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid Authorization header' });
-  }
-  const accessToken = auth.slice(7).trim();
-  if (!accessToken) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
-  }
-
-  const user = await verifySupabaseUser(accessToken);
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
-  }
-
-  let body: unknown;
   try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-  } catch {
-    return res.status(400).json({ error: 'Invalid JSON body' });
-  }
-
-  const inputResult = analyzeInputSchema.safeParse(body);
-  if (!inputResult.success) {
-    const msg = inputResult.error.errors?.[0]?.message ?? 'Validation failed';
-    return res.status(400).json({ error: 'Validation failed', message: msg });
-  }
-  const input: AnalyzeInput = inputResult.data;
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('subscription_status')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  const subStatus = profile?.subscription_status ?? null;
-  const isPro = subStatus === 'active' || subStatus === 'trialing';
-
-  if (!isPro) {
-    const limitResult = await enforceFreeLimit(supabase, user.id);
-    if (!limitResult.ok) {
-      return res.status(402).json({
-        error: 'LIMIT',
-        message: 'Free limit reached',
-      });
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid Authorization header' });
     }
-  }
-
-  const { system, user: userPrompt } = buildAnalyzePrompt(input);
-
-  let output: AnalyzeOutput;
-  try {
-    const raw = await callOpenAI(system, userPrompt);
-    const parsed = parseOutput(raw);
-    output = parsed ?? FALLBACK_OUTPUT;
-    if (!parsed) {
-      console.warn('[analyze] OpenAI output failed validation, using fallback');
+    const accessToken = auth.slice(7).trim();
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
     }
+
+    const user = await verifySupabaseUser(accessToken);
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
+    }
+
+    let body: unknown;
+    try {
+      body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+
+    const inputResult = analyzeInputSchema.safeParse(body);
+    if (!inputResult.success) {
+      const msg = inputResult.error.errors?.[0]?.message ?? 'Validation failed';
+      return res.status(400).json({ error: 'Validation failed', message: msg });
+    }
+    const input: AnalyzeInput = inputResult.data;
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_status')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const subStatus = profile?.subscription_status ?? null;
+    const isPro = subStatus === 'active' || subStatus === 'trialing';
+
+    if (!isPro) {
+      const limitResult = await enforceFreeLimit(supabase, user.id);
+      if (!limitResult.ok) {
+        return res.status(402).json({
+          error: 'LIMIT',
+          message: 'Free limit reached',
+        });
+      }
+    }
+
+    const { system, user: userPrompt } = buildAnalyzePrompt(input);
+
+    let output: AnalyzeOutput;
+    try {
+      const raw = await callOpenAI(system, userPrompt);
+      const parsed = parseOutput(raw);
+      output = parsed ?? FALLBACK_OUTPUT;
+      if (!parsed) {
+        console.warn('[analyze] OpenAI output failed validation, using fallback');
+      }
+    } catch (err) {
+      console.error('[analyze] OpenAI error:', err instanceof Error ? err.message : err);
+      output = FALLBACK_OUTPUT;
+    }
+
+    return res.status(200).json(output);
   } catch (err) {
-    console.error('[analyze] OpenAI error:', err instanceof Error ? err.message : err);
-    output = FALLBACK_OUTPUT;
+    console.error('[analyze] unexpected error:', err);
+    return res.status(500).json({ error: 'SERVER_ERROR' });
   }
-
-  return res.status(200).json(output);
 }
