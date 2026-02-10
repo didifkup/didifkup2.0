@@ -613,11 +613,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
           <h1 className="text-display text-5xl md:text-7xl text-gray-900 mb-6 max-w-4xl mx-auto">
             Did I fk that up…<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-500 to-teal-500">
-              or am I just overthinking?
+              …or am I spiraling for absolutely no reason?
             </span>
           </h1>
           <p className="text-2xl md:text-3xl text-gray-700 mb-8 max-w-3xl mx-auto font-medium leading-snug">
-            Paste what happened. Get the verdict — and what to do next.
+            Drop the moment you can't stop replaying.
+            <br />
+            We'll tell you if it's actually bad — or just your brain being loud.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-4">
             <Button
@@ -625,7 +627,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
               onClick={() => onAnalyze?.()}
               className="btn-cta-primary bg-gradient-to-r from-lime-500 to-teal-500 hover:from-lime-600 hover:to-teal-600 text-xl px-8 py-6"
             >
-              Analyze what happened
+              Run it through the vibe check
               <ArrowRight className="ml-2 w-6 h-6" />
             </Button>
             <Button
@@ -638,7 +640,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
             </Button>
           </div>
           <p className="text-gray-600 text-sm leading-relaxed">
-            No sign-up. No judgment. Just the truth.
+            Used for texts, snaps, situationships, and 2am overthinking.
           </p>
         </motion.div>
         <HeroDemoWidget />
@@ -646,10 +648,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
 
       <section className="container mx-auto px-4 section-padding relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 content-max-width mx-auto">
-          <CommentBubble text="This would've saved me so many spirals 😭" delay={0.1} />
-          <CommentBubble text="Why is this painfully accurate" delay={0.2} />
-          <CommentBubble text="AI told me to do nothing and it worked" delay={0.3} />
-          <CommentBubble text="I feel called out but also safe??" delay={0.4} />
+          <CommentBubble text="why did this read me so hard 😭" delay={0.1} />
+          <CommentBubble text="sending this to everyone I know" delay={0.2} />
+          <CommentBubble text="it told me to do nothing and I finally slept" delay={0.3} />
+          <CommentBubble text="why is this painfully accurate" delay={0.4} />
         </div>
       </section>
 
@@ -659,9 +661,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 content-max-width mx-auto">
           {[
-            { num: '1', title: 'Paste the moment', desc: 'Tell us what happened and what was said' },
-            { num: '2', title: 'Get the verdict', desc: 'See if it is actually bad or just anxiety' },
-            { num: '3', title: 'Know what to do', desc: 'Get your next move + follow-up texts' }
+            { num: '1', title: 'Paste the moment', desc: "Say what happened. No editing. No overthinking." },
+            { num: '2', title: 'Get the verdict', desc: "We tell you if it's actually bad — or just anxiety." },
+            { num: '3', title: 'Know what to do', desc: "You get the next move. Or permission to chill." }
           ].map((step, i) => (
             <motion.div
               key={i}
@@ -760,7 +762,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
           Pricing
         </h2>
         <p className="text-center text-xl text-gray-600 mb-12 leading-relaxed">
-          Upgrade if you start using it every day 👀
+          If you keep opening this app… you already know 👀
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 content-max-width mx-auto">
           <motion.div
@@ -800,23 +802,23 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
                 </Badge>
                 <h3 className="text-3xl font-bold mb-4 text-gray-900">Pro</h3>
                 <p className="text-5xl font-black mb-2 text-gray-900">$12</p>
-                <p className="text-gray-600 mb-6">/month</p>
+                <p className="text-gray-600 mb-6">/month to stop asking your friends the same question.</p>
                 <ul className="space-y-3 mb-8">
                   <li className="flex items-center gap-2 text-lg leading-relaxed">
                     <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                    Unlimited checks
+                    Unlimited vibe checks
                   </li>
                   <li className="flex items-center gap-2 text-lg leading-relaxed">
                     <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                    Full history
+                    Full history (yes, even the embarrassing ones)
                   </li>
                   <li className="flex items-center gap-2 text-lg leading-relaxed">
                     <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                    Follow-up text suggestions
+                    Follow-up texts you can actually send
                   </li>
                   <li className="flex items-center gap-2 text-lg leading-relaxed">
                     <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                    Priority support
+                    Skip the overthinking next time
                   </li>
                 </ul>
                 <Button
@@ -1509,6 +1511,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <>
     <Navigation />
     {children}
+    <footer className="py-8 text-center">
+      <p className="text-sm text-gray-400">
+        Yes, you can screenshot this. We expect you to.
+      </p>
+    </footer>
   </>
 );
 

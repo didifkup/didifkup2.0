@@ -48,19 +48,23 @@ export function PricingPage() {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Pro</h2>
             <p className="text-4xl font-black text-gray-900 mb-1">$12</p>
-            <p className="text-gray-600 mb-6">/month</p>
+            <p className="text-gray-600 mb-6">/month to stop asking your friends the same question.</p>
             <ul className="space-y-3 mb-8 text-gray-600">
               <li className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                Unlimited checks
+                Unlimited vibe checks
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                Full history
+                Full history (yes, even the embarrassing ones)
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
-                Follow-up text suggestions
+                Follow-up texts you can actually send
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-lime-500 flex-shrink-0" />
+                Skip the overthinking next time
               </li>
             </ul>
             <Button
