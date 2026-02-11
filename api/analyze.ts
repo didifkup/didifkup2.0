@@ -28,24 +28,26 @@ function logError(req: VercelRequest, step: string, err: unknown): void {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse): Promise<VercelResponse | void> {
+function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   const origin = (req.headers.origin as string) || '';
   const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
   const isAllowed = isLocalhost || origin === 'https://didifkup.vercel.app' || origin === 'https://didifkup.com';
-  if (isAllowed) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+  res.setHeader('Access-Control-Allow-Origin', isAllowed ? origin : '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Vary', 'Origin');
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<VercelResponse | void> {
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(204).end();
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: 'Method Not Allowed' } });
+    return res.status(405).setHeader('Allow', 'POST, OPTIONS').json({ error: 'METHOD_NOT_ALLOWED' });
   }
 
   const contentLength = parseInt(req.headers['content-length'] || '0', 10);
