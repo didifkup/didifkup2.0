@@ -181,9 +181,10 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
       return res.status(402).json({ error: 'LIMIT', message: 'Free limit reached' });
     }
     const cooldownResult = await checkScenarioCooldown(supabase, user.id, inputHash);
+    const cooldownAny = cooldownResult as { ok?: boolean; allowed?: boolean };
     const allowed =
-      'ok' in cooldownResult ? cooldownResult.ok :
-      'allowed' in cooldownResult ? cooldownResult.allowed :
+      cooldownAny.ok !== undefined ? cooldownAny.ok :
+      cooldownAny.allowed !== undefined ? cooldownAny.allowed :
       true;
     const retryAfterHours =
       (cooldownResult as any).retryAfterHours ??

@@ -72,7 +72,7 @@ export const analyzeOutputSchema = z.object({
     interpretationSchema,
   ]).refine(
     (arr) => {
-      const labels = arr.map((i) => i.label);
+      const labels = arr.map((i) => (i as { label: string }).label);
       return new Set(labels).size === 3 &&
         labels.includes('most_likely') &&
         labels.includes('also_possible') &&

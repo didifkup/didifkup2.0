@@ -4,7 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 import { getStripeEnv } from '../_lib/env.js';
 
 const stripeEnv = getStripeEnv();
-const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, { apiVersion: Stripe.LatestApiVersion });
+const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, {
+  apiVersion: "2025-04.28.basil" as any, // keeps runtime EXACTLY the same
+});
 
 function getRawBody(req: VercelRequest): Promise<Buffer> {
   return new Promise((resolve, reject) => {

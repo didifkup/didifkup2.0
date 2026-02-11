@@ -53,7 +53,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let currentPeriodEnd: string | null = null;
 
   if (user.email?.trim()) {
-    const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+      apiVersion: "2025-04.28.basil" as any, // keeps runtime EXACTLY the same
+    });
     const customers = await stripe.customers.list({
       email: user.email.trim(),
       limit: 1,
@@ -80,9 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           subscriptionStatus = 'past_due';
         }
         stripeSubscriptionId = sub.id;
-        currentPeriodEnd = sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString()
-          : null;
+        const subAny = sub as any;
+        const periodEnd = subAny.current_period_end;
+        currentPeriodEnd = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
       }
     }
   }

@@ -45,7 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
   }
 
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+  const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+    apiVersion: "2025-04.28.basil" as any, // keeps runtime EXACTLY the same
+  });
   const successUrl = `${env.SITE_URL}/upgrade/success`;
   const cancelUrl = `${env.SITE_URL}/upgrade/cancel`;
 
