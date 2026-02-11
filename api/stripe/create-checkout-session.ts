@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
 import { getStripeEnv } from '../_lib/env.js';
+import { setCorsHeaders, handleOptions } from '../_lib/cors.js';
 
 /** Verify Supabase user via REST API. Returns user or null. */
 async function verifySupabaseUser(
@@ -20,6 +21,12 @@ async function verifySupabaseUser(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setCorsHeaders(req, res);
+  if (req.method === 'OPTIONS') {
+    handleOptions(req, res);
+    return;
+  }
+
   const env = getStripeEnv();
 
   if (req.method !== 'POST') {

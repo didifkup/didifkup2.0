@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createHash, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { getAnalyzeEnv } from './env.js';
 import { buildAnalyzePrompt } from './analyzePrompt.js';
 import {
   analyzeInputSchema,
   analyzeOutputSchema,
-  FALLBACK_OUTPUT,
   type AnalyzeInput,
   type AnalyzeOutput,
 } from './analyzeSchema.js';
@@ -17,6 +17,55 @@ import {
 import { recordScenarioAndStreak } from './scenarioPersistence.js';
 
 const FREE_DAILY_LIMIT = 2;
+const OPENAI_TIMEOUT_MS = 25_000;
+const OPENAI_MODEL = 'gpt-4o-mini';
+
+function generateRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  }
+}
+
+function inputFingerprint(input: AnalyzeInput): string {
+  const payload = JSON.stringify({
+    happened: input.happened,
+    youDid: input.youDid,
+    theyDid: input.theyDid,
+    relationship: input.relationship ?? null,
+    context: input.context ?? null,
+    tone: input.tone,
+  });
+  return createHash('sha256').update(payload, 'utf8').digest('hex').slice(0, 16);
+}
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 30;
+
+function getClientIp(req: { headers?: Record<string, string | string[] | undefined> }): string {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (ip && typeof ip === 'string') return ip.split(',')[0].trim();
+  return 'unknown';
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
 
 async function verifySupabaseUser(
   accessToken: string,
@@ -80,40 +129,97 @@ async function enforceFreeLimit(supabase: any, userId: string): Promise<{ ok: tr
   return { ok: true };
 }
 
+interface OpenAIErrorInfo {
+  status: number;
+  code?: string;
+  type?: string;
+  message?: string;
+}
+
+function parseOpenAIError(status: number, errBody: string): OpenAIErrorInfo {
+  const info: OpenAIErrorInfo = { status };
+  try {
+    const parsed = JSON.parse(errBody) as { error?: { code?: string; type?: string; message?: string } };
+    const err = parsed?.error;
+    if (err) {
+      info.code = err.code;
+      info.type = err.type;
+      info.message = err.message;
+    }
+  } catch {
+    info.message = errBody.slice(0, 200);
+  }
+  return info;
+}
+
+function isOpenAIBillingOrQuotaError(status: number, info: OpenAIErrorInfo): boolean {
+  if (status === 402 || status === 429 || status === 403) return true;
+  const code = (info.code ?? '').toLowerCase();
+  const type = (info.type ?? '').toLowerCase();
+  const msg = (info.message ?? '').toLowerCase();
+  return (
+    code.includes('insufficient_quota') ||
+    code.includes('billing_not_active') ||
+    type.includes('insufficient_quota') ||
+    type.includes('billing') ||
+    msg.includes('quota') ||
+    msg.includes('billing')
+  );
+}
+
 async function callOpenAI(
   system: string,
   user: string,
   openaiApiKey: string
-): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.7,
-    }),
-  });
+): Promise<{ ok: true; content: string } | { ok: false; error: OpenAIErrorInfo }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = err instanceof Error && err.name === 'AbortError' ? 'OpenAI request timed out' : (err instanceof Error ? err.message : String(err));
+    return { ok: false, error: { status: 504, message: msg } };
+  }
+  clearTimeout(timeoutId);
+
+  const rawBody = await res.text();
 
   if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`OpenAI API error ${res.status}: ${errBody}`);
+    const error = parseOpenAIError(res.status, rawBody);
+    return { ok: false, error };
   }
 
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  let data: { choices?: { message?: { content?: string } }[] };
+  try {
+    data = JSON.parse(rawBody || '{}') as { choices?: { message?: { content?: string } }[] };
+  } catch {
+    return { ok: false, error: { status: 502, message: 'Invalid OpenAI response' } };
+  }
+
   const content = data.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') {
-    throw new Error('OpenAI returned empty or invalid response');
+    return { ok: false, error: { status: 502, message: 'OpenAI returned empty or invalid response' } };
   }
 
-  return content;
+  return { ok: true, content };
 }
 
 function parseOutput(raw: string): AnalyzeOutput | null {
@@ -127,56 +233,134 @@ function parseOutput(raw: string): AnalyzeOutput | null {
   return null;
 }
 
+function logStep(step: 'parse' | 'validate' | 'openai' | 'format' | string, extra?: Record<string, unknown>): void {
+  console.error('[analyze]', JSON.stringify({ route: '/api/analyze', step, ...extra }));
+}
+
+function sendError(res: VercelResponse, status: number, code: string, message: string): VercelResponse {
+  return res.status(status).json({ ok: false, error: { code, message } });
+}
+
 export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse): Promise<VercelResponse> {
-  const env = getAnalyzeEnv();
+  try {
+    return await handleAnalyzePostImpl(req, res);
+  } catch (err) {
+    logStep('format', { substep: 'unexpected', error: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+    return sendError(res, 500, 'SERVER_ERROR', 'Something went wrong. Please try again.');
+  }
+}
+
+function isDebugOpenAIEnabled(req: VercelRequest): boolean {
+  const header = req.headers['x-debug-openai'];
+  const query = req.query?.debug;
+  const requested = header === '1' || query === '1';
+  const allowed = process.env.NODE_ENV !== 'production' || process.env.DEBUG_OPENAI === '1';
+  return !!(requested && allowed);
+}
+
+async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): Promise<VercelResponse> {
+  const origin = (req.headers.origin as string) || '';
+  logStep('format', { substep: 'request_start', method: req.method, origin });
+
+  const clientIp = getClientIp(req);
+  if (!checkRateLimit(clientIp)) {
+    return sendError(res, 429, 'RATE_LIMIT', 'Too many requests. Please try again in a minute.');
+  }
+
+  let env;
+  try {
+    env = getAnalyzeEnv();
+  } catch (err) {
+    logStep('format', { substep: 'env_failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 100) });
+    return sendError(res, 500, 'SERVER_ERROR', 'Server configuration error');
+  }
 
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid Authorization header' });
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header' } });
   }
   const accessToken = auth.slice(7).trim();
   if (!accessToken) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Missing Bearer token' });
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Missing Bearer token' } });
   }
 
-  const user = await verifySupabaseUser(
-    accessToken,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  let user: { id: string } | null;
+  try {
+    user = await verifySupabaseUser(
+      accessToken,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  } catch (err) {
+    logStep('format', { substep: 'verify_user_failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 100) });
+    return sendError(res, 500, 'SERVER_ERROR', 'Unable to verify your account. Please try again.');
+  }
   if (!user) {
-    return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
+    logStep('format', { substep: 'auth_failed', reason: 'invalid_or_expired_token' });
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } });
   }
 
   let body: unknown;
   try {
     body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   } catch {
-    return res.status(400).json({ error: 'Invalid JSON body' });
+    logStep('parse', { substep: 'json_parse' });
+    return res.status(400).json({ ok: false, error: { code: 'BAD_INPUT', message: 'Invalid JSON body' } });
   }
+
+  const bodyKeys = body && typeof body === 'object' ? Object.keys(body as object) : [];
+  logStep('parse', { substep: 'body_parsed', keys: bodyKeys });
 
   const inputResult = analyzeInputSchema.safeParse(body);
   if (!inputResult.success) {
-    const msg = inputResult.error.issues?.[0]?.message ?? 'Validation failed';
-    return res.status(400).json({ error: 'Validation failed', message: msg });
+    const msg = (inputResult.error.issues?.[0] as { message?: string } | undefined)?.message ?? 'Validation failed';
+    logStep('validate', { substep: 'failed', message: msg });
+    return res.status(400).json({ ok: false, error: { code: 'BAD_INPUT', message: msg } });
   }
   const input: AnalyzeInput = inputResult.data;
 
-  const supabase: any = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  const requestId = generateRequestId();
+  const fingerprint = inputFingerprint(input);
+  console.log(
+    JSON.stringify({
+      requestId,
+      inputFingerprint: fingerprint,
+      preview: {
+        happened: (input.happened || '').slice(0, 60),
+        youDid: (input.youDid || '').slice(0, 60),
+        theyDid: (input.theyDid || '').slice(0, 60),
+      },
+    })
+  );
 
-  const profiles = supabase.from('profiles') as any;
-  const { data: profile } = await profiles
-    .select('subscription_status')
-    .eq('id', user.id)
-    .maybeSingle();
+  let supabase: any;
+  try {
+    supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  } catch (err) {
+    logStep('format', { substep: 'create_client_failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 100) });
+    return sendError(res, 500, 'SERVER_ERROR', 'Server configuration error');
+  }
 
-  const subStatus = profile?.subscription_status ?? null;
+  let subStatus: string | null = null;
+  try {
+    const profiles = supabase.from('profiles') as any;
+    const { data: profile } = await profiles.select('subscription_status').eq('id', user.id).maybeSingle();
+    subStatus = profile?.subscription_status ?? null;
+  } catch (err) {
+    logStep('format', { substep: 'profile_fetch_failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 100) });
+  }
   const isPro = subStatus === 'active' || subStatus === 'trialing';
 
   const inputHash = computeInputHash(input);
 
   if (!isPro) {
-    const limitResult = await enforceFreeLimit(supabase, user.id);
+    let limitResult: { ok: true } | { ok: false; status: 402 };
+    try {
+      limitResult = await enforceFreeLimit(supabase, user.id);
+    } catch (err) {
+      logStep('format', { substep: 'enforce_limit_failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 100) });
+      limitResult = { ok: true };
+    }
     if (!limitResult.ok) {
       return res.status(402).json({ error: 'LIMIT', message: 'Free limit reached' });
     }
@@ -202,18 +386,53 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
   }
 
   const { system, user: userPrompt } = buildAnalyzePrompt(input);
+  const strictUserPrompt = `${userPrompt}\n\nReturn ONLY the JSON object with keys risk, stabilization, interpretation, nextMove. No other text.`;
 
   let output: AnalyzeOutput;
-  try {
-    const raw = await callOpenAI(system, userPrompt, env.OPENAI_API_KEY);
-    const parsed = parseOutput(raw);
-    output = parsed ?? FALLBACK_OUTPUT;
+  let openaiDebugStatus: number | undefined;
+  let openaiDebugCode: string | undefined;
+
+  let openaiResult = await callOpenAI(system, userPrompt, env.OPENAI_API_KEY);
+
+  if (openaiResult.ok) {
+    let parsed = parseOutput(openaiResult.content);
     if (!parsed) {
-      console.warn('[analyze] OpenAI output failed validation, using fallback');
+      logStep('openai', { substep: 'output_invalid_retry', requestId, inputFingerprint: fingerprint });
+      const retryResult = await callOpenAI(system, strictUserPrompt, env.OPENAI_API_KEY);
+      if (retryResult.ok) parsed = parseOutput(retryResult.content);
+      if (!parsed) {
+        logStep('openai', { substep: 'output_invalid_after_retry', requestId, inputFingerprint: fingerprint });
+        return res.status(503).json({
+          error: 'AI_UNAVAILABLE',
+          message: 'Vibe check is temporarily unavailable. Please try again in a minute.',
+          requestId,
+          inputFingerprint: fingerprint,
+        });
+      }
     }
-  } catch (err) {
-    console.error('[analyze] OpenAI error:', err instanceof Error ? err.message : err);
-    output = FALLBACK_OUTPUT;
+    output = parsed;
+    console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: true, model: OPENAI_MODEL }));
+  } else {
+    const { status, code, type, message } = openaiResult.error;
+    openaiDebugStatus = status;
+    openaiDebugCode = code ?? undefined;
+    logStep('openai', {
+      substep: 'call_failed',
+      requestId,
+      inputFingerprint: fingerprint,
+      status,
+      code: code ?? null,
+      type: type ?? null,
+      isBillingOrQuota: isOpenAIBillingOrQuotaError(status, openaiResult.error),
+      message: (message ?? '').slice(0, 150),
+    });
+    console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: false, model: OPENAI_MODEL }));
+    return res.status(503).json({
+      error: 'AI_UNAVAILABLE',
+      message: 'Vibe check is temporarily unavailable. Please try again in a minute.',
+      requestId,
+      inputFingerprint: fingerprint,
+    });
   }
 
   try {
@@ -228,5 +447,17 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
     /* non-blocking */
   }
 
-  return res.status(200).json(output);
+  const response: Record<string, unknown> = { ...output };
+  if (isDebugOpenAIEnabled(req)) {
+    response.debug = {
+      usedOpenAI: true,
+      model: OPENAI_MODEL,
+      ...(openaiDebugStatus != null && { openaiStatus: openaiDebugStatus }),
+      ...(openaiDebugCode && { openaiErrorCode: openaiDebugCode }),
+    };
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    response._debug = { requestId, inputFingerprint: fingerprint, model: OPENAI_MODEL };
+  }
+  return res.status(200).json(response);
 }

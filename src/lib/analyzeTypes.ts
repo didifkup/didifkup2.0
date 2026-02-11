@@ -40,15 +40,12 @@ export interface NextMoves {
   repair: Repair;
 }
 
-/** Result from POST /api/analyze — matches server schema */
+/** Result from POST /api/analyze — Emotional Stabilizer shape */
 export interface AnalyzeResult {
-  verdict: 'low' | 'medium' | 'high';
-  confidence: 'low' | 'medium' | 'high';
-  summary: string;
-  interpretations: [Interpretation, Interpretation, Interpretation];
-  support_points: [string, string, string];
-  next_moves: NextMoves;
-  safety_note: string;
+  risk: { label: 'LOW RISK' | 'MEDIUM RISK' | 'HIGH RISK'; score: number };
+  stabilization: string;
+  interpretation: string;
+  nextMove: string;
 }
 
 /** Thrown when the free daily limit is reached (402) */

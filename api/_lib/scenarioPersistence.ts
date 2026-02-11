@@ -21,6 +21,7 @@ export async function recordScenarioAndStreak(
 
   try {
     const scenarios = supabase.from('didifkup_scenarios') as any;
+    const verdictFromRisk = (result as { risk?: { label?: string } }).risk?.label?.replace(/\s*RISK\s*$/i, '').toLowerCase() ?? 'medium';
     await scenarios.insert({
       user_id: userId,
       input_hash: inputHash,
@@ -31,7 +32,7 @@ export async function recordScenarioAndStreak(
       context: input.context ?? null,
       tone: input.tone,
       result: result as unknown as Record<string, unknown>,
-      verdict: result.verdict,
+      verdict: verdictFromRisk,
     });
   } catch (err) {
     console.error('[analyze] scenario insert error:', err instanceof Error ? err.message : err);

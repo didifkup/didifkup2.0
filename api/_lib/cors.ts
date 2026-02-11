@@ -34,9 +34,9 @@ export function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
 }
 
 /**
- * Handles OPTIONS preflight. Returns 204 with CORS headers.
+ * Handles OPTIONS preflight. Returns 200 with CORS headers.
  */
 export function handleOptions(req: VercelRequest, res: VercelResponse): void {
   setCorsHeaders(req, res);
-  res.status(204).end();
+  res.status(200).end();
 }

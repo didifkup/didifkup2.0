@@ -72,7 +72,7 @@ interface AnalysisResult {
 function adaptedToLegacy(a: AdaptedAnalysis): AnalysisResult {
   return {
     verdict: a.verdict,
-    summary: a.summary,
+    summary: a.stabilization ?? a.summary,
     reasons: a.reasons,
     nextMove: a.nextMove,
     followUpTexts: a.followUpTabs,
@@ -281,9 +281,14 @@ const HeroDemoWidget: React.FC = () => {
                 <VerdictBadge level={demoResult.verdict} showConfetti={true} />
               </div>
               <ConfidenceMeter level={demoResult.verdict} />
-              <p className="text-center text-lg text-gray-800 font-medium mt-6 mb-4">
-                {demoResult.summary}
-              </p>
+              <div className="mx-auto max-w-2xl text-center mt-6 mb-4 space-y-3">
+                <p className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
+                  {demoResult.summary}
+                </p>
+                <p className="text-lg text-gray-700 leading-relaxed">
+                  One grounded read: it happens to everyone. They may not even notice the timestamp.
+                </p>
+              </div>
               <Button
                 onClick={handleReset}
                 variant="outline"
@@ -708,22 +713,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
                   <VerdictBadge level={exampleResult.verdict} showConfetti={false} />
                 </div>
                 <ConfidenceMeter level={exampleResult.verdict} />
-                <p className="text-2xl text-center mb-8 text-gray-800 font-medium leading-snug">
-                  {exampleResult.summary}
-                </p>
-                <div className="space-y-4 mb-8">
-                  {exampleResult.reasons.map((reason, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.08, type: 'spring', stiffness: 400, damping: 30 }}
-                      className="flex items-start gap-3"
-                    >
-                      <Check className="w-6 h-6 text-lime-500 flex-shrink-0 mt-1" />
-                      <p className="text-lg text-gray-700 leading-relaxed">{reason}</p>
-                    </motion.div>
-                  ))}
+                <div className="mx-auto max-w-2xl text-center mt-6 mb-6 space-y-3">
+                  <p className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
+                    {exampleResult.summary}
+                  </p>
+                  <p className="text-lg text-gray-700 leading-relaxed">
+                    One grounded read: your tone matched the conversation and nothing you said was out of pocket.
+                  </p>
                 </div>
                 <div className="bg-lime-100 rounded-2xl p-6 mb-6">
                   <h4 className="font-bold text-xl mb-2 text-gray-900">Next Move:</h4>
@@ -1143,45 +1139,15 @@ const AppPage: React.FC = () => {
                       <VerdictBadge level={result.verdict} showConfetti={true} />
                     </div>
                     <ConfidenceMeter confidenceNumber={result.confidenceNumber} />
-                    <p className="text-2xl text-center mb-8 text-gray-800 font-medium mt-6">
-                      {result.summary}
-                    </p>
-                    <div className="space-y-3 mb-8">
-                        <h4 className="font-bold text-xl text-gray-900">What&apos;s probably happening</h4>
-                        {result.interpretations.map((interp, i) => {
-                          const labelText =
-                            interp.label === 'most_likely'
-                              ? 'Most likely'
-                              : interp.label === 'also_possible'
-                                ? 'Also possible'
-                                : 'Less likely';
-                          return (
-                            <motion.div
-                              key={interp.label}
-                              initial={{ opacity: 0, x: -16 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: i * 0.06, type: 'spring', stiffness: 400, damping: 30 }}
-                              className="flex flex-col gap-1 sm:flex-row sm:items-start bg-gray-50/80 p-4 rounded-2xl"
-                            >
-                              <span className="text-sm font-semibold text-purple-600 shrink-0 sm:w-24">{labelText}</span>
-                              <p className="text-lg text-gray-700 leading-relaxed">{interp.text}</p>
-                            </motion.div>
-                          );
-                        })}
-                    </div>
-                    <div className="space-y-4 mb-8">
-                      {result.reasons.map((reason, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, x: -16 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.08, type: 'spring', stiffness: 400, damping: 30 }}
-                          className="flex items-start gap-3 bg-gray-50 p-4 rounded-2xl"
-                        >
-                          <Check className="w-6 h-6 text-lime-500 flex-shrink-0 mt-1" />
-                          <p className="text-lg text-gray-700 leading-relaxed">{reason}</p>
-                        </motion.div>
-                      ))}
+                    <div className="mx-auto max-w-2xl text-center mt-6 mb-6 space-y-3">
+                      <p className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
+                        {result.stabilization ?? result.summary}
+                      </p>
+                      {result.interpretation ? (
+                        <p className="text-lg text-gray-700 leading-relaxed">
+                          {result.interpretation}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="bg-lime-100 rounded-2xl p-6 mb-6">
                       <h4 className="font-bold text-xl mb-2 text-gray-900">Next Move:</h4>

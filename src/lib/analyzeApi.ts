@@ -16,10 +16,7 @@ export async function analyzeSituation(input: AnalyzeInput): Promise<AnalyzeResu
     throw new Error('Not signed in');
   }
 
-  const base = import.meta.env.VITE_API_BASE_URL ?? '';
-  const url = `${base}/api/analyze`;
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/analyze', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -35,22 +32,43 @@ export async function analyzeSituation(input: AnalyzeInput): Promise<AnalyzeResu
     }),
   });
 
-  const body = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    if (text && text.trim().startsWith('{')) {
+      body = (JSON.parse(text) as Record<string, unknown>) ?? {};
+    }
+  } catch {
+    /* body stays {} */
+  }
 
   if (res.status === 402 && body?.error === 'LIMIT') {
-    throw new LimitError(body?.message ?? 'Free limit reached');
+    throw new LimitError((body?.message as string) ?? 'Free limit reached');
   }
 
   if (res.status === 429 && body?.error === 'COOLDOWN') {
     throw new CooldownError(
-      body?.message ?? 'You already checked this recently.',
+      (body?.message as string) ?? 'You already checked this recently.',
       typeof body?.retry_after_hours === 'number' ? body.retry_after_hours : 6
     );
   }
 
   if (!res.ok) {
-    throw new Error(body?.message ?? body?.error ?? `Request failed (${res.status})`);
+    const errObj = body?.error;
+    let message: string;
+    if (typeof errObj === 'object' && errObj != null && typeof (errObj as { message?: unknown }).message === 'string') {
+      message = (errObj as { message: string }).message;
+    } else if (typeof body?.message === 'string') {
+      message = body.message;
+    } else if (typeof body?.error === 'string') {
+      message = body.error;
+    } else if (text && text.length > 0 && !text.trim().startsWith('{')) {
+      message = `Request failed (${res.status}): ${text.slice(0, 80)}${text.length > 80 ? '...' : ''}`;
+    } else {
+      message = `Request failed (${res.status})`;
+    }
+    throw new Error(message);
   }
 
-  return body as AnalyzeResult;
+  return body as unknown as AnalyzeResult;
 }

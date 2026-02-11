@@ -28,10 +28,103 @@ React + TypeScript + Vite app with Tailwind CSS v4 and a shadcn-style UI compone
    ```
 
    For local `/api/*` calls (e.g. `/api/analyze`), run **both** terminals:
-   - **Terminal 1:** `npm run dev` — Vite frontend at http://localhost:5173
-   - **Terminal 2:** `npm run dev:api` — Vercel serverless at http://localhost:3000
+   - **Terminal A:** `npm run dev:api` — Vercel serverless at http://localhost:3000
+   - **Terminal B:** `npm run dev` — Vite frontend at http://localhost:5173
 
-   Vite proxies `/api` to the Vercel dev server, so relative API URLs work.
+   Or run both in one terminal: `npm run dev:all`
+
+   Vite proxies `/api` to `http://localhost:3000` (vercel dev). To hit production instead (e.g. when running only `npm run dev`), set `API_PROXY_TARGET=https://didifkup.com` in `.env`.
+
+### API self-test (local)
+
+With both `npm run dev:api` (port 3000) and `npm run dev` (port 517x) running:
+
+```bash
+# 1. OPTIONS preflight — expect 200
+curl -i -X OPTIONS http://localhost:3000/api/analyze \
+  -H "Origin: http://localhost:5176" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+
+# 2. POST with valid payload — expect 200 (OpenAI analysis when key is set)
+curl -i -X POST http://localhost:3000/api/analyze \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" \
+  -H "Origin: http://localhost:5176" \
+  -d '{"happened":"I sent a text","youDid":"Hey","theyDid":"No reply","relationship":"friend","context":"texting","tone":"neutral"}'
+
+# 3. POST with invalid payload — expect 400 JSON
+curl -i -X POST http://localhost:3000/api/analyze \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer fake" \
+  -d '{"happened":"x","youDid":"y"}'
+```
+
+Replace `YOUR_SUPABASE_ACCESS_TOKEN` with a real session token (from browser devtools after signing in). Via Vite proxy: use `http://localhost:5173/api/analyze` instead of `:3000`.
+
+### Vibe check / OpenAI verification
+
+**Local (Vercel dev)**
+
+1. Terminal A: `npm run dev:api`
+2. Terminal B: `npm run dev`
+3. Ensure `.env` has all required API env vars (loaded by `vercel dev`): `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. If any are missing you get `500` with "Server configuration error".
+4. Run (replace `YOUR_SUPABASE_ACCESS_TOKEN` with a **single** Supabase session token from browser devtools after signing in — no spaces; not a Stripe key):
+
+**Bash / Git Bash:**
+```bash
+curl -i -X POST http://localhost:3000/api/analyze \
+  -H "Content-Type: application/json" \
+  -H "x-debug-openai: 1" \
+  -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" \
+  --data '{"happened":"x","youDid":"y","theyDid":"z","tone":"neutral"}'
+```
+
+**PowerShell** (avoids `ParserError` on `--data`; use `-d` and escaped quotes):
+```powershell
+curl.exe -i -X POST http://localhost:3000/api/analyze -H "Content-Type: application/json" -H "x-debug-openai: 1" -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" -d "{\"happened\":\"x\",\"youDid\":\"y\",\"theyDid\":\"z\",\"tone\":\"neutral\"}"
+```
+
+- **Expect:** `200` and JSON body with `debug.usedOpenAI: true` when OpenAI succeeds. If `OPENAI_API_KEY` is missing you get `500` with `error.code: "MISSING_OPENAI_KEY"`. If `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing you get `500` with "Server configuration error".
+- Debug (`debug.usedOpenAI`, `debug.model`, etc.) is only returned in development or when `DEBUG_OPENAI=1` is set.
+- **PowerShell:** Use the one-line `curl.exe` command below; avoid line breaks in the `-d` string so the JSON isn’t truncated (e.g. `"tone":"neutral"` must be intact).
+
+**Production**
+
+**Bash / Git Bash:**
+```bash
+curl -i -X POST https://didifkup.com/api/analyze \
+  -H "Content-Type: application/json" \
+  -H "x-debug-openai: 1" \
+  -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" \
+  --data '{"happened":"x","youDid":"y","theyDid":"z","tone":"neutral"}'
+```
+
+**PowerShell:**
+```powershell
+curl.exe -i -X POST https://didifkup.com/api/analyze -H "Content-Type: application/json" -H "x-debug-openai: 1" -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" -d "{\"happened\":\"x\",\"youDid\":\"y\",\"theyDid\":\"z\",\"tone\":\"neutral\"}"
+```
+
+- **Expect:** `200` with analysis. The `debug` object is only included if `DEBUG_OPENAI=1` is set in production env; otherwise it is omitted.
+
+**Emotional Stabilizer response shape (200 OK)**  
+Success responses return JSON with exactly these keys (from the DIDIFKUP Emotional Stabilizer prompt):
+
+- `risk`: `{ "label": "LOW RISK" | "MEDIUM RISK" | "HIGH RISK", "score": number }`
+- `stabilization`: string (emotional containment + brevity)
+- `interpretation`: string (one grounded read)
+- `nextMove`: string (one hyper-specific action)
+
+Example (Bash):
+
+```bash
+curl -s -X POST http://localhost:3000/api/analyze \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_SUPABASE_ACCESS_TOKEN" \
+  -d '{"happened":"I left them on read","youDid":"Hey sorry","theyDid":"No reply","tone":"neutral"}' | jq 'keys'
+```
+
+Expect a JSON object whose top-level keys include `risk`, `stabilization`, `interpretation`, `nextMove` (and optionally `usedFallback`, `debug` when applicable).
 
 3. **Build for production**:
 

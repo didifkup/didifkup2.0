@@ -1,22 +1,23 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import path from 'node:path'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
+      "/api": {
+        target: process.env.API_PROXY_TARGET || "http://localhost:3000",
         changeOrigin: true,
-        secure: false,
+        secure: (process.env.API_PROXY_TARGET || "").startsWith("https"),
+        rewrite: (path) => path, // keep /api/... unchanged
       },
     },
   },
   resolve: {
     alias: {
-      '@': path.resolve(process.cwd(), 'src'),
+      "@": path.resolve(process.cwd(), "src"),
     },
   },
-})
+});
