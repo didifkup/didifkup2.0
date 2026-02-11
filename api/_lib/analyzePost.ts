@@ -394,37 +394,19 @@ async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): P
 
   let openaiResult = await callOpenAI(system, userPrompt, env.OPENAI_API_KEY);
 
-  if (openaiResult.ok) {
-    let parsed = parseOutput(openaiResult.content);
-    if (!parsed) {
-      logStep('openai', { substep: 'output_invalid_retry', requestId, inputFingerprint: fingerprint });
-      const retryResult = await callOpenAI(system, strictUserPrompt, env.OPENAI_API_KEY);
-      if (retryResult.ok) parsed = parseOutput(retryResult.content);
-      if (!parsed) {
-        logStep('openai', { substep: 'output_invalid_after_retry', requestId, inputFingerprint: fingerprint });
-        return res.status(503).json({
-          error: 'AI_UNAVAILABLE',
-          message: 'Vibe check is temporarily unavailable. Please try again in a minute.',
-          requestId,
-          inputFingerprint: fingerprint,
-        });
-      }
-    }
-    output = parsed;
-    console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: true, model: OPENAI_MODEL }));
-  } else {
-    const { status, code, type, message } = openaiResult.error;
-    openaiDebugStatus = status;
-    openaiDebugCode = code ?? undefined;
+  if (!openaiResult.ok) {
+    const openaiError = openaiResult.error;
+    openaiDebugStatus = openaiError.status;
+    openaiDebugCode = openaiError.code ?? undefined;
     logStep('openai', {
       substep: 'call_failed',
       requestId,
       inputFingerprint: fingerprint,
-      status,
-      code: code ?? null,
-      type: type ?? null,
-      isBillingOrQuota: isOpenAIBillingOrQuotaError(status, openaiResult.error),
-      message: (message ?? '').slice(0, 150),
+      status: openaiError.status,
+      code: openaiError.code ?? null,
+      type: openaiError.type ?? null,
+      isBillingOrQuota: isOpenAIBillingOrQuotaError(openaiError.status, openaiError),
+      message: (openaiError.message ?? '').slice(0, 150),
     });
     console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: false, model: OPENAI_MODEL }));
     return res.status(503).json({
@@ -434,6 +416,24 @@ async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): P
       inputFingerprint: fingerprint,
     });
   }
+
+  let parsed = parseOutput(openaiResult.content);
+  if (!parsed) {
+    logStep('openai', { substep: 'output_invalid_retry', requestId, inputFingerprint: fingerprint });
+    const retryResult = await callOpenAI(system, strictUserPrompt, env.OPENAI_API_KEY);
+    if (retryResult.ok) parsed = parseOutput(retryResult.content);
+    if (!parsed) {
+      logStep('openai', { substep: 'output_invalid_after_retry', requestId, inputFingerprint: fingerprint });
+      return res.status(503).json({
+        error: 'AI_UNAVAILABLE',
+        message: 'Vibe check is temporarily unavailable. Please try again in a minute.',
+        requestId,
+        inputFingerprint: fingerprint,
+      });
+    }
+  }
+  output = parsed;
+  console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: true, model: OPENAI_MODEL }));
 
   try {
     await recordScenarioSeen(supabase, user.id, inputHash);
