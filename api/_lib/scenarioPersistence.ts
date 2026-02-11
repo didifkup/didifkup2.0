@@ -1,23 +1,9 @@
 import type { AnalyzeInput } from './analyzeSchema.js';
 import type { AnalyzeOutput } from './analyzeSchema.js';
 
-/** Today's date as YYYY-MM-DD in UTC */
-function todayUtc(): string {
-  const d = new Date();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 /** Yesterday's date as YYYY-MM-DD in UTC */
 function yesterdayUtc(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 }
 
 /**
@@ -25,17 +11,17 @@ function yesterdayUtc(): string {
  * Non-blocking: logs errors but does not throw.
  */
 export async function recordScenarioAndStreak(
-  supabase: ReturnType<typeof import('@supabase/supabase-js').createClient>,
+  supabase: any,
   userId: string,
   input: AnalyzeInput,
   inputHash: string,
   result: AnalyzeOutput
 ): Promise<void> {
-  try {
-    const now = new Date().toISOString();
-    const today = todayUtc();
+  const today = new Date().toISOString().slice(0, 10);
 
-    await supabase.from('didifkup_scenarios').insert({
+  try {
+    const scenarios = supabase.from('didifkup_scenarios') as any;
+    await scenarios.insert({
       user_id: userId,
       input_hash: inputHash,
       happened: input.happened,
@@ -52,16 +38,16 @@ export async function recordScenarioAndStreak(
   }
 
   try {
-    const { data: row } = await supabase
-      .from('didifkup_streaks')
+    const streaks = supabase.from('didifkup_streaks') as any;
+    const { data: row } = await streaks
       .select('last_checkin_date, current_streak, best_streak, total_checks')
       .eq('user_id', userId)
       .maybeSingle();
 
-    const last = row?.last_checkin_date ?? null;
-    const currentStreak = row?.current_streak ?? 0;
-    const bestStreak = row?.best_streak ?? 0;
-    const totalChecks = (row?.total_checks ?? 0) + 1;
+    const last = row != null && row.last_checkin_date != null ? String(row.last_checkin_date).slice(0, 10) : null;
+    const currentStreak = row != null && row.current_streak != null ? Number(row.current_streak) : 0;
+    const bestStreak = row != null && row.best_streak != null ? Number(row.best_streak) : 0;
+    const totalChecks = (row != null && row.total_checks != null ? Number(row.total_checks) : 0) + 1;
 
     let newStreak: number;
     if (last === today) {
@@ -73,9 +59,7 @@ export async function recordScenarioAndStreak(
     }
     const newBest = Math.max(bestStreak, newStreak);
 
-    await supabase
-      .from('didifkup_streaks')
-      .upsert(
+    await streaks.upsert(
         {
           user_id: userId,
           last_checkin_date: today,

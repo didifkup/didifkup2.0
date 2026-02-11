@@ -41,12 +41,9 @@ function isBeforeTodayUtc(iso: string): boolean {
   return d.getTime() < today.getTime();
 }
 
-async function enforceFreeLimit(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
-): Promise<{ ok: true } | { ok: false; status: 402 }> {
-  const { data: row, error: fetchError } = await supabase
-    .from('user_usage')
+async function enforceFreeLimit(supabase: any, userId: string): Promise<{ ok: true } | { ok: false; status: 402 }> {
+  const usage = supabase.from('user_usage') as any;
+  const { data: row, error: fetchError } = await usage
     .select('user_id, analyses_used, updated_at')
     .eq('user_id', userId)
     .maybeSingle();
@@ -71,15 +68,12 @@ async function enforceFreeLimit(
   const nextCount = analysesUsed + 1;
 
   if (row) {
-    const { error: updateError } = await supabase
-      .from('user_usage')
+    const { error: updateError } = await usage
       .update({ analyses_used: nextCount, updated_at: now })
       .eq('user_id', userId);
     if (updateError) throw new Error('Failed to update usage');
   } else {
-    const { error: insertError } = await supabase
-      .from('user_usage')
-      .insert({ user_id: userId, analyses_used: nextCount, updated_at: now });
+    const { error: insertError } = await usage.insert({ user_id: userId, analyses_used: nextCount, updated_at: now });
     if (insertError) throw new Error('Failed to create usage');
   }
 
@@ -163,15 +157,15 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
 
   const inputResult = analyzeInputSchema.safeParse(body);
   if (!inputResult.success) {
-    const msg = inputResult.error.errors?.[0]?.message ?? 'Validation failed';
+    const msg = inputResult.error.issues?.[0]?.message ?? 'Validation failed';
     return res.status(400).json({ error: 'Validation failed', message: msg });
   }
   const input: AnalyzeInput = inputResult.data;
 
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabase: any = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
-  const { data: profile } = await supabase
-    .from('profiles')
+  const profiles = supabase.from('profiles') as any;
+  const { data: profile } = await profiles
     .select('subscription_status')
     .eq('id', user.id)
     .maybeSingle();
@@ -187,11 +181,21 @@ export async function handleAnalyzePost(req: VercelRequest, res: VercelResponse)
       return res.status(402).json({ error: 'LIMIT', message: 'Free limit reached' });
     }
     const cooldownResult = await checkScenarioCooldown(supabase, user.id, inputHash);
-    if (!cooldownResult.ok) {
+    const allowed =
+      'ok' in cooldownResult ? cooldownResult.ok :
+      'allowed' in cooldownResult ? cooldownResult.allowed :
+      true;
+    const retryAfterHours =
+      (cooldownResult as any).retryAfterHours ??
+      (cooldownResult as any).retry_after_hours ??
+      (cooldownResult as any).retryAfterHoursRemaining ??
+      (cooldownResult as any).retry_after_hours_remaining ??
+      6;
+    if (!allowed) {
       return res.status(429).json({
         error: 'COOLDOWN',
         message: 'You already checked this recently.',
-        retry_after_hours: cooldownResult.retryAfterHours,
+        retry_after_hours: retryAfterHours,
       });
     }
   }

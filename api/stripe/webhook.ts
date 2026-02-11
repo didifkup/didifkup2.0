@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getStripeEnv } from '../_lib/env.js';
 
 const stripeEnv = getStripeEnv();
-const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, { apiVersion: '2025-04.28.basil' });
+const stripe = new Stripe(stripeEnv.STRIPE_SECRET_KEY, { apiVersion: Stripe.LatestApiVersion });
 
 function getRawBody(req: VercelRequest): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -32,30 +32,21 @@ async function getCustomerEmail(customerId: string): Promise<string | null> {
   }
 }
 
-async function findProfileId(supabase: ReturnType<typeof createClient>, email: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('email', email.trim())
-    .maybeSingle();
+async function findProfileId(supabase: any, email: string): Promise<string | null> {
+  const profiles = supabase.from('profiles') as any;
+  const { data } = await profiles.select('id').eq('email', email.trim()).maybeSingle();
   return data?.id ?? null;
 }
 
-async function findProfileIdByCustomerId(
-  supabase: ReturnType<typeof createClient>,
-  customerId: string
-): Promise<string | null> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('stripe_customer_id', customerId)
-    .maybeSingle();
+async function findProfileIdByCustomerId(supabase: any, customerId: string): Promise<string | null> {
+  const profiles = supabase.from('profiles') as any;
+  const { data } = await profiles.select('id').eq('stripe_customer_id', customerId).maybeSingle();
   return data?.id ?? null;
 }
 
 /** Update profile by id — writes ONLY the canonical subscription fields */
 async function updateProfile(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   profileId: string,
   updates: {
     subscription_status: 'active' | 'past_due' | 'inactive';
@@ -64,22 +55,21 @@ async function updateProfile(
     stripe_subscription_id: string | null;
   }
 ): Promise<void> {
-  await supabase
-    .from('profiles')
-    .upsert(
-      {
-        id: profileId,
-        subscription_status: updates.subscription_status,
-        current_period_end: updates.current_period_end,
-        stripe_customer_id: updates.stripe_customer_id,
-        stripe_subscription_id: updates.stripe_subscription_id,
-      },
-      { onConflict: 'id' }
-    );
+  const profiles = supabase.from('profiles') as any;
+  await profiles.upsert(
+    {
+      id: profileId,
+      subscription_status: updates.subscription_status,
+      current_period_end: updates.current_period_end,
+      stripe_customer_id: updates.stripe_customer_id,
+      stripe_subscription_id: updates.stripe_subscription_id,
+    },
+    { onConflict: 'id' }
+  );
 }
 
 async function resolveProfileId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   customerId: string,
   metadataUserId?: string | null
 ): Promise<string | null> {
@@ -120,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: `Webhook signature verification failed: ${message}` });
   }
 
-  const supabase = createClient(stripeEnv.SUPABASE_URL, stripeEnv.SUPABASE_SERVICE_ROLE_KEY);
+  const supabase: any = createClient(stripeEnv.SUPABASE_URL, stripeEnv.SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     switch (event.type) {
@@ -139,7 +129,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (subId) {
           stripeSubscriptionId = subId;
           const sub = await stripe.subscriptions.retrieve(subId);
-          currentPeriodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+          const cpe = (sub as any).current_period_end as number | undefined;
+          currentPeriodEnd = cpe ? new Date(cpe * 1000).toISOString() : null;
         }
 
         await updateProfile(supabase, profileId, {
@@ -161,11 +152,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let currentPeriodEnd: string | null = null;
         let stripeSubscriptionId: string | null = null;
-        const subId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+        const invSub = (invoice as any).subscription;
+        const subId = typeof invSub === 'string' ? invSub : invSub?.id;
         if (subId) {
           stripeSubscriptionId = subId;
           const sub = await stripe.subscriptions.retrieve(subId);
-          currentPeriodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+          const cpe = (sub as any).current_period_end as number | undefined;
+          currentPeriodEnd = cpe ? new Date(cpe * 1000).toISOString() : null;
         }
 
         await updateProfile(supabase, profileId, {
@@ -187,9 +180,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!profileId) break;
 
         const status = mapSubscriptionStatus(subscription.status);
-        const currentPeriodEnd = subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000).toISOString()
-          : null;
+        const cpe = (subscription as any).current_period_end as number | undefined;
+        const currentPeriodEnd = cpe ? new Date(cpe * 1000).toISOString() : null;
 
         await updateProfile(supabase, profileId, {
           subscription_status: status,
