@@ -20,7 +20,6 @@ import { BackgroundFX } from '@/components/BackgroundFX';
 import { VibeCheckResultCard } from '@/components/VibeCheckResultCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
-import { openPaymentLink } from '@/lib/paymentLink';
 import { supabase } from '@/lib/supabaseClient';
 import { cn, cardPremium } from '@/lib/utils';
 import type { VibecheckInput, VibecheckResponse } from '@/lib/vibecheck/types';

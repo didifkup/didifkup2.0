@@ -2,7 +2,6 @@
  * Shared VibeCheck result card: meters, confidence, explainer, Next Move, Deep Breakdown (Pro/locked).
  * Used by /vibecheck and landing page "See an example". Single source of truth for result UI.
  */
-import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
