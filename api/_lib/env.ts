@@ -39,6 +39,19 @@ export interface StripeEnv {
   SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
+export interface SupabaseEnv {
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+}
+
+/** Validate only Supabase vars (e.g. for vibecheck save/pattern). */
+export function getSupabaseEnv(): SupabaseEnv {
+  return {
+    SUPABASE_URL: mustGet('SUPABASE_URL'),
+    SUPABASE_SERVICE_ROLE_KEY: mustGet('SUPABASE_SERVICE_ROLE_KEY'),
+  };
+}
+
 /** Validate Stripe + Supabase vars needed for billing/webhooks. */
 export function getStripeEnv(): StripeEnv {
   return {

@@ -107,6 +107,13 @@ curl.exe -i -X POST https://didifkup.com/api/analyze -H "Content-Type: applicati
 
 - **Expect:** `200` with analysis. The `debug` object is only included if `DEBUG_OPENAI=1` is set in production env; otherwise it is omitted.
 
+### VibeCheck V2 (`/vibecheck`)
+
+- **Page:** `/vibecheck` — no sign-in required; results show meters, explainer, and a **Deep Breakdown** section.
+- **Pro:** If the user is signed in and has an active/trialing subscription (`profiles.subscription_status`), the full Deep Breakdown is shown. Otherwise, a blurred preview and **Unlock Pro ($12/mo)** CTA is shown; the CTA opens the Stripe Payment Link (same as the rest of the app).
+- **Env:** Same as above. For the Unlock CTA to work, set `VITE_STRIPE_PAYMENT_LINK_URL` (or `VITE_STRIPE_PAYMENT_LINK`) in `.env` — see `.env.example`.
+- **Pattern feedback:** Signed-in users with ≥3 saved vibe checks see “Your pattern: you overthink ~X% of situations.” Results are stored via `POST /api/vibecheck/save` (auth required); pattern via `GET /api/vibecheck/pattern` (auth required). Run migration `0005_vibecheck_results.sql` so the `vibecheck_results` table exists.
+
 **Emotional Stabilizer response shape (200 OK)**  
 Success responses return JSON with exactly these keys (from the DIDIFKUP Emotional Stabilizer prompt):
 
