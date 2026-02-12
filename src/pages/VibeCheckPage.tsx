@@ -7,19 +7,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
-  AlertTriangle,
-  CheckCircle,
   MessageSquare,
   Users,
   Heart,
   Sparkles,
   ArrowRight,
-  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { BackgroundFX } from '@/components/BackgroundFX';
+import { VibeCheckResultCard } from '@/components/VibeCheckResultCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { openPaymentLink } from '@/lib/paymentLink';
@@ -29,11 +27,6 @@ import type { VibecheckInput, VibecheckResponse } from '@/lib/vibecheck/types';
 
 const MAX_CHARS = 2000;
 const ANALYZING_DELAY_MS = 1200;
-const STAGGER_CARD = 0.1;
-const STAGGER_BAR = 0.2;
-const STAGGER_CONFIDENCE = 0.15;
-const STAGGER_EXPLAINER = 0.2;
-
 type Status = 'idle' | 'loading' | 'analyzing' | 'success' | 'error';
 
 /** Derive metrics from API score (0–100). Higher score = less overthinking, more "messed up" signal. */
@@ -70,35 +63,6 @@ function useCountUp(target: number, enabled: boolean, delayMs: number, resultKey
   return display;
 }
 
-function VibecheckVerdictBadge({ rank }: { rank: string }) {
-  const reduceMotion = useReducedMotion();
-  const config =
-    rank === 'Low'
-      ? { color: 'bg-green-500', icon: CheckCircle, text: 'LOW', shadow: 'shadow-green-500/50' }
-      : rank === 'High'
-        ? { color: 'bg-red-500', icon: AlertCircle, text: 'HIGH', shadow: 'shadow-red-500/50' }
-        : { color: 'bg-orange-500', icon: AlertTriangle, text: 'MEDIUM', shadow: 'shadow-orange-500/50' };
-  const Icon = config.icon;
-
-  return (
-    <motion.div
-      initial={{ scale: 0, rotate: -15 }}
-      animate={{ scale: 1, rotate: reduceMotion ? 0 : [0, 5, -5, 0] }}
-      transition={{ type: 'spring', duration: 0.8, bounce: 0.5 }}
-      className={cn(
-        'relative text-white px-8 py-4 rounded-3xl flex items-center gap-3 shadow-2xl',
-        config.color,
-        config.shadow
-      )}
-    >
-      <div className="absolute inset-1 border-2 border-white/30 rounded-3xl" />
-      <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent rounded-3xl" />
-      <Icon className="w-8 h-8 relative z-10" />
-      <span className="relative z-10 text-2xl font-bold">{config.text}</span>
-    </motion.div>
-  );
-}
-
 /** Animated dots for "Analyzing..." */
 function AnimatedDots() {
   return (
@@ -131,7 +95,6 @@ export function VibeCheckPage() {
 
   const overthinkingPct = result ? deriveMetrics(result.score).overthinkingPct : 0;
   const messedUpPct = result ? deriveMetrics(result.score).messedUpPct : 0;
-  const dominantOverthinking = overthinkingPct >= messedUpPct;
 
   const showMeters = !!(status === 'success' && result && resultsRevealed);
   const countUpDelayMs = 400;
@@ -362,164 +325,15 @@ export function VibeCheckPage() {
             )}
 
             {status === 'success' && result && resultsRevealed && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-              >
-                <Card className={cn(cardPremium, 'p-8 border-lime-300/80 shadow-xl bg-white')}>
-                  <div className="card-premium-shine absolute inset-0 rounded-3xl" />
-                  <div className="relative z-10 space-y-6">
-                    <p className="text-center text-sm text-purple-600 font-bold mb-4">
-                      Ok breathe — here&apos;s the real read:
-                    </p>
-                    <div className="flex justify-center mb-4">
-                      <VibecheckVerdictBadge rank={result.rank} />
-                    </div>
-
-                    {/* Meter cards — stagger in */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: STAGGER_CARD, duration: 0.3 }}
-                      className="grid grid-cols-2 gap-4"
-                    >
-                      <motion.div
-                        className={cn(
-                          'rounded-2xl border-2 p-4 bg-white transition-all',
-                          dominantOverthinking
-                            ? 'border-purple-300 shadow-md shadow-purple-500/20'
-                            : 'border-gray-200'
-                        )}
-                        initial={reduceMotion ? false : { boxShadow: '0 0 0 0 rgba(168, 85, 247, 0)' }}
-                        animate={
-                          reduceMotion
-                            ? {}
-                            : dominantOverthinking
-                              ? { boxShadow: ['0 0 0 0 rgba(168, 85, 247, 0)', '0 0 0 6px rgba(168, 85, 247, 0.15)', '0 0 0 0 rgba(168, 85, 247, 0)'] }
-                              : {}
-                        }
-                        transition={{ duration: 0.8, repeat: 0 }}
-                      >
-                        <p className="text-xs font-medium text-gray-500 mb-1">Overthinking</p>
-                        <p className="text-2xl font-bold text-gray-900">{overthinkingDisplay}%</p>
-                        <motion.div
-                          className="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden"
-                          initial={{ scaleX: 0 }}
-                          animate={{ scaleX: 1 }}
-                          transition={{ delay: STAGGER_CARD + STAGGER_BAR, duration: 0.5, origin: 'left' }}
-                        >
-                          <div
-                            className="h-full rounded-full bg-purple-400 transition-[width] duration-500"
-                            style={{ width: `${overthinkingDisplay}%` }}
-                          />
-                        </motion.div>
-                      </motion.div>
-                      <motion.div
-                        className={cn(
-                          'rounded-2xl border-2 p-4 bg-white transition-all',
-                          !dominantOverthinking
-                            ? 'border-orange-300 shadow-md shadow-orange-500/20'
-                            : 'border-gray-200'
-                        )}
-                        initial={reduceMotion ? false : { boxShadow: '0 0 0 0 rgba(249, 115, 22, 0)' }}
-                        animate={
-                          reduceMotion
-                            ? {}
-                            : !dominantOverthinking
-                              ? { boxShadow: ['0 0 0 0 rgba(249, 115, 22, 0)', '0 0 0 6px rgba(249, 115, 22, 0.15)', '0 0 0 0 rgba(249, 115, 22, 0)'] }
-                              : {}
-                        }
-                        transition={{ duration: 0.8, repeat: 0 }}
-                      >
-                        <p className="text-xs font-medium text-gray-500 mb-1">Messed up</p>
-                        <p className="text-2xl font-bold text-gray-900">{messedUpDisplay}%</p>
-                        <motion.div
-                          className="mt-2 h-2 rounded-full bg-gray-100 overflow-hidden"
-                          initial={{ scaleX: 0 }}
-                          animate={{ scaleX: 1 }}
-                          transition={{ delay: STAGGER_CARD + STAGGER_BAR + 0.05, duration: 0.5, origin: 'left' }}
-                        >
-                          <div
-                            className="h-full rounded-full bg-orange-400 transition-[width] duration-500"
-                            style={{ width: `${messedUpDisplay}%` }}
-                          />
-                        </motion.div>
-                      </motion.div>
-                    </motion.div>
-
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: STAGGER_CARD + STAGGER_CONFIDENCE }}
-                      className="text-center text-xs text-gray-500 font-medium"
-                    >
-                      Score: {result.score}/100
-                    </motion.p>
-
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: STAGGER_CARD + STAGGER_EXPLAINER }}
-                      className="mx-auto max-w-2xl text-center space-y-2"
-                    >
-                      <p className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
-                        {result.oneLiner}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Compared to 12,482 similar scenarios.
-                      </p>
-                    </motion.div>
-
-                    <div className="bg-lime-100 rounded-2xl p-6">
-                      <h4 className="font-bold text-xl mb-2 text-gray-900">Next Move:</h4>
-                      <p className="text-lg text-gray-800">{result.nextMove}</p>
-                    </div>
-
-                    {/* Deep Breakdown — Pro full, Free blurred + CTA */}
-                    <div className="rounded-2xl border-2 border-gray-200 overflow-hidden relative">
-                      <h4 className="font-bold text-lg text-gray-900 p-4 pb-2">Deep Breakdown</h4>
-                      {isPro ? (
-                        <div className="p-4 pt-0 space-y-3 text-gray-700">
-                          <p><span className="font-medium">Pattern breakdown:</span> {result.validation}</p>
-                          <p><span className="font-medium">Reality check:</span> {result.realityCheck}</p>
-                          <p><span className="font-medium">What to say next:</span> {result.nextMove}</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="p-4 pt-0 space-y-3 text-gray-500 blur-sm select-none pointer-events-none">
-                            <p>Pattern breakdown — your situation in context…</p>
-                            <p>What to say next (exact text) — suggested reply…</p>
-                            <p>Risk if you double text — when to wait…</p>
-                          </div>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 backdrop-blur-[2px]">
-                            <Lock className="w-10 h-10 text-gray-400 mb-3" />
-                            <p className="text-sm font-medium text-gray-700 mb-3">Unlock Pro for the full breakdown</p>
-                            <Button
-                              className="bg-lime-500 hover:bg-lime-600 text-white rounded-2xl font-bold px-6"
-                              onClick={() => openPaymentLink()}
-                            >
-                              Unlock Pro ($12/mo)
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {patternAvg != null && (
-                      <p className="text-sm text-muted-foreground">
-                        Your pattern: you overthink ~{patternAvg}% of situations.
-                      </p>
-                    )}
-
-                    {result.requestId && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        Request ID: {result.requestId}
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              </motion.div>
+              <VibeCheckResultCard
+                result={result}
+                isPro={isPro}
+                overthinkingDisplay={overthinkingDisplay}
+                messedUpDisplay={messedUpDisplay}
+                patternAvg={patternAvg}
+                showRequestId={true}
+                static={false}
+              />
             )}
 
             {status === 'loading' && (

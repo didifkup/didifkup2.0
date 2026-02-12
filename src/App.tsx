@@ -45,6 +45,8 @@ import { UpgradeSuccessPage } from '@/pages/UpgradeSuccessPage';
 import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
 import { AccountPage } from '@/pages/AccountPage';
 import { VibeCheckPage } from '@/pages/VibeCheckPage';
+import { VibeCheckResultCard } from '@/components/VibeCheckResultCard';
+import type { VibecheckResponse } from '@/lib/vibecheck/types';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
@@ -587,21 +589,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
     }
   };
 
-  const exampleResult: AnalysisResult = {
-    verdict: 'LOW',
-    summary: "You're overthinking this one. Your response was totally normal.",
-    reasons: [
-      "Your tone matched the conversation energy",
-      "They responded positively after",
-      "Nothing you said was out of pocket"
-    ],
-    nextMove: "Do nothing — you're good",
-    followUpTexts: {
-      soft: "Hey! Just wanted to check in 😊",
-      neutral: "Hey, how's it going?",
-      firm: "Hey, can we talk about earlier?"
-    }
+  /** Demo result for "See an example" — matches current VibeCheck schema (VibecheckResponse). */
+  const landingDemoResult: VibecheckResponse = {
+    rank: 'Low',
+    score: 22,
+    validation: "Your tone matched the conversation. Nothing you said was out of pocket.",
+    realityCheck: "They probably didn't read as much into it as you are. Most people don't.",
+    nextMove: "Do nothing — you're good. If they don't bring it up, you're in the clear.",
+    oneLiner: "You're overthinking this one. Your response was totally normal.",
+    requestId: 'demo',
   };
+
+  const landingDemoOverthinking = 100 - landingDemoResult.score;
+  const landingDemoMessedUp = landingDemoResult.score;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 relative">
@@ -704,51 +704,17 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="relative"
+              className="relative max-w-3xl mx-auto"
             >
-            <Card className={cn(cardPremium, "max-w-3xl mx-auto p-8 bg-white border-lime-300/80")}>
-              <div className="card-premium-shine absolute inset-0 rounded-3xl" />
-              <div className="relative z-10">
-                <p className="text-center text-sm text-purple-600 font-bold mb-4">Ok breathe — here's the real read:</p>
-                <div className="flex justify-center mb-6">
-                  <VerdictBadge level={exampleResult.verdict} showConfetti={false} />
-                </div>
-                <ConfidenceMeter level={exampleResult.verdict} />
-                <div className="mx-auto max-w-2xl text-center mt-6 mb-6 space-y-3">
-                  <p className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug">
-                    {exampleResult.summary}
-                  </p>
-                  <p className="text-lg text-gray-700 leading-relaxed">
-                    One grounded read: your tone matched the conversation and nothing you said was out of pocket.
-                  </p>
-                </div>
-                <div className="bg-lime-100 rounded-2xl p-6 mb-6">
-                  <h4 className="font-bold text-xl mb-2 text-gray-900">Next Move:</h4>
-                  <p className="text-lg text-gray-800">{exampleResult.nextMove}</p>
-                </div>
-                <div className="space-y-4">
-                  <h4 className="font-bold text-xl text-gray-900">Follow-up texts:</h4>
-                  <Tabs defaultValue="neutral" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 rounded-2xl">
-                      <TabsTrigger value="soft" className="rounded-xl">Soft</TabsTrigger>
-                      <TabsTrigger value="neutral" className="rounded-xl">Neutral</TabsTrigger>
-                      <TabsTrigger value="firm" className="rounded-xl">Firm</TabsTrigger>
-                    </TabsList>
-                    {Object.entries(exampleResult.followUpTexts).map(([key, text]) => (
-                      <TabsContent key={key} value={key}>
-                        <div className="flex items-center gap-2 bg-gray-100 p-4 rounded-2xl">
-                          <p className="flex-1 text-gray-800">{text}</p>
-                          <Button size="sm" variant="ghost" className="rounded-xl">
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                </div>
-                <ShareCard result={exampleResult} />
-              </div>
-            </Card>
+              <VibeCheckResultCard
+                result={landingDemoResult}
+                isPro={false}
+                overthinkingDisplay={landingDemoOverthinking}
+                messedUpDisplay={landingDemoMessedUp}
+                showRequestId={false}
+                onUnlock={() => openPaymentLink()}
+                static
+              />
             </motion.section>
           )}
         </AnimatePresence>
