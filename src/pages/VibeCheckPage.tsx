@@ -30,7 +30,6 @@ import type { VibecheckInput, VibecheckResponse } from '@/lib/vibecheck/types';
 const MAX_CHARS = 2000;
 const ANALYZING_DELAY_MS = 1200;
 const STAGGER_CARD = 0.1;
-const STAGGER_COUNT = 0.25;
 const STAGGER_BAR = 0.2;
 const STAGGER_CONFIDENCE = 0.15;
 const STAGGER_EXPLAINER = 0.2;
@@ -134,7 +133,7 @@ export function VibeCheckPage() {
   const messedUpPct = result ? deriveMetrics(result.score).messedUpPct : 0;
   const dominantOverthinking = overthinkingPct >= messedUpPct;
 
-  const showMeters = status === 'success' && result && resultsRevealed;
+  const showMeters = !!(status === 'success' && result && resultsRevealed);
   const countUpDelayMs = 400;
   const overthinkingDisplay = useCountUp(overthinkingPct, showMeters, countUpDelayMs, result?.requestId);
   const messedUpDisplay = useCountUp(messedUpPct, showMeters, countUpDelayMs, result?.requestId);
