@@ -6,6 +6,7 @@ import { buildAnalyzePrompt } from './analyzePrompt.js';
 import {
   analyzeInputSchema,
   analyzeOutputSchema,
+  FALLBACK_OUTPUT,
   type AnalyzeInput,
   type AnalyzeOutput,
 } from './analyzeSchema.js';
@@ -189,7 +190,7 @@ async function callOpenAI(
           { role: 'user', content: user },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        temperature: 0.2,
       }),
       signal: controller.signal,
     });
@@ -222,6 +223,26 @@ async function callOpenAI(
   return { ok: true, content };
 }
 
+function stripJsonFromMarkdown(raw: string): string {
+  const s = raw.trim();
+  const codeBlock = /^```(?:json)?\s*([\s\S]*?)```\s*$/;
+  const m = s.match(codeBlock);
+  return m ? m[1].trim() : s;
+}
+
+function normalizeRiskLabel(label: unknown): 'LOW RISK' | 'MEDIUM RISK' | 'HIGH RISK' {
+  const str = typeof label === 'string' ? label.toUpperCase().replace(/\s+/g, ' ').trim() : '';
+  if (/^LOW\s*RISK$/.test(str)) return 'LOW RISK';
+  if (/^HIGH\s*RISK$/.test(str)) return 'HIGH RISK';
+  return 'MEDIUM RISK';
+}
+
+function clampScore(n: unknown): number {
+  const num = typeof n === 'number' && Number.isFinite(n) ? n : Number(n);
+  return Number.isFinite(num) ? Math.max(0, Math.min(1, num)) : 0.5;
+}
+
+/** Strict parse: must pass full Zod schema. */
 function parseOutput(raw: string): AnalyzeOutput | null {
   try {
     const json = JSON.parse(raw) as unknown;
@@ -231,6 +252,33 @@ function parseOutput(raw: string): AnalyzeOutput | null {
     // ignore
   }
   return null;
+}
+
+/** Lenient parse: extract required fields from OpenAI output so we don't 503 for minor format issues. */
+function parseOutputLenient(raw: string): AnalyzeOutput | null {
+  try {
+    const stripped = stripJsonFromMarkdown(raw);
+    const json = JSON.parse(stripped) as Record<string, unknown>;
+    if (!json || typeof json !== 'object') return null;
+
+    const riskObj = json.risk && typeof json.risk === 'object' ? (json.risk as Record<string, unknown>) : {};
+    const label = normalizeRiskLabel(riskObj.label);
+    const score = clampScore(riskObj.score);
+
+    const stabilization = typeof json.stabilization === 'string' && json.stabilization.trim()
+      ? json.stabilization.trim()
+      : FALLBACK_OUTPUT.stabilization;
+    const interpretation = typeof json.interpretation === 'string' && json.interpretation.trim()
+      ? json.interpretation.trim()
+      : FALLBACK_OUTPUT.interpretation;
+    const nextMove = typeof json.nextMove === 'string' && json.nextMove.trim()
+      ? json.nextMove.trim()
+      : FALLBACK_OUTPUT.nextMove;
+
+    return { risk: { label, score }, stabilization, interpretation, nextMove };
+  } catch {
+    return null;
+  }
 }
 
 function logStep(step: 'parse' | 'validate' | 'openai' | 'format' | string, extra?: Record<string, unknown>): void {
@@ -386,7 +434,7 @@ async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): P
   }
 
   const { system, user: userPrompt } = buildAnalyzePrompt(input);
-  const strictUserPrompt = `${userPrompt}\n\nReturn ONLY the JSON object with keys risk, stabilization, interpretation, nextMove. No other text.`;
+  const strictUserPrompt = `${userPrompt}\n\nReturn ONLY valid JSON with exactly these keys: risk.label, risk.score, stabilization, interpretation, nextMove, and optionally followUpTexts.soft, followUpTexts.neutral, followUpTexts.firm. No markdown. No other text.`;
 
   let output: AnalyzeOutput;
   let openaiDebugStatus: number | undefined;
@@ -417,13 +465,25 @@ async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): P
     });
   }
 
-  let parsed = parseOutput(openaiResult.content);
+  let parsed = parseOutput(openaiResult.content) ?? parseOutputLenient(openaiResult.content);
   if (!parsed) {
-    logStep('openai', { substep: 'output_invalid_retry', requestId, inputFingerprint: fingerprint });
+    logStep('openai', {
+      substep: 'output_invalid',
+      requestId,
+      inputFingerprint: fingerprint,
+      first300: openaiResult.content.slice(0, 300),
+    });
     const retryResult = await callOpenAI(system, strictUserPrompt, env.OPENAI_API_KEY);
-    if (retryResult.ok) parsed = parseOutput(retryResult.content);
+    if (retryResult.ok) {
+      parsed = parseOutput(retryResult.content) ?? parseOutputLenient(retryResult.content);
+    }
     if (!parsed) {
-      logStep('openai', { substep: 'output_invalid_after_retry', requestId, inputFingerprint: fingerprint });
+      logStep('openai', {
+        substep: 'output_invalid_retry_content',
+        requestId,
+        inputFingerprint: fingerprint,
+        first300: retryResult.ok ? retryResult.content.slice(0, 300) : undefined,
+      });
       return res.status(503).json({
         error: 'AI_UNAVAILABLE',
         message: 'Vibe check is temporarily unavailable. Please try again in a minute.',
@@ -431,6 +491,7 @@ async function handleAnalyzePostImpl(req: VercelRequest, res: VercelResponse): P
         inputFingerprint: fingerprint,
       });
     }
+    if (retryResult.ok) logStep('openai', { substep: 'used_retry_parse', requestId });
   }
   output = parsed;
   console.log(JSON.stringify({ requestId, inputFingerprint: fingerprint, openaiSuccess: true, model: OPENAI_MODEL }));

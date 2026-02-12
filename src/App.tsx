@@ -44,6 +44,7 @@ import { SignUpPage } from '@/pages/SignUpPage';
 import { UpgradeSuccessPage } from '@/pages/UpgradeSuccessPage';
 import { UpgradeCancelPage } from '@/pages/UpgradeCancelPage';
 import { AccountPage } from '@/pages/AccountPage';
+import { VibeCheckPage } from '@/pages/VibeCheckPage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { openPaymentLink } from '@/lib/paymentLink';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
@@ -1400,6 +1401,9 @@ const Navigation: React.FC = () => {
               <NavLinkItem to="/pricing" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 Pricing
               </NavLinkItem>
+              <NavLinkItem to="/vibecheck" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
+                VibeCheck
+              </NavLinkItem>
               {accountStatusEl}
               {showProBadge && (
                 <Badge className="ml-1 bg-lime-500 text-white border-lime-600 text-xs font-bold">
@@ -1433,6 +1437,9 @@ const Navigation: React.FC = () => {
                 </NavLinkItem>
                 <NavLinkItem to="/pricing" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
                   Pricing
+                </NavLinkItem>
+                <NavLinkItem to="/vibecheck" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
+                  VibeCheck
                 </NavLinkItem>
                 {authLoading ? (
                   <span className="block text-gray-400 text-sm py-2">…</span>
@@ -1550,6 +1557,7 @@ export default function DidIFkUpApp() {
           <Route path="/app" element={<Layout><AppRouteGuard><AppPage /></AppRouteGuard></Layout>} />
           <Route path="/stickers" element={<Layout><StickersPage /></Layout>} />
           <Route path="/pricing" element={<Layout><PricingPage /></Layout>} />
+          <Route path="/vibecheck" element={<Layout><VibeCheckPage /></Layout>} />
           <Route path="/signin" element={<Layout><SignInPage /></Layout>} />
           <Route path="/auth" element={<Layout><SignInPage /></Layout>} />
           <Route path="/signup" element={<Layout><SignUpPage /></Layout>} />

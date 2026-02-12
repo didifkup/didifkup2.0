@@ -7,8 +7,8 @@ export function computeInputHash(input: {
   happened: string;
   youDid: string;
   theyDid: string;
-  relationship?: string;
-  context?: string;
+  relationship?: string | null;
+  context?: string | null;
   tone: string;
 }): string {
   const s = [

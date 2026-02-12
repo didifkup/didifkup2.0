@@ -42,18 +42,20 @@ Core rules:
    - No multiple interpretations.
 
 6) Brevity constraint:
-   - Maximum 180 words.
-   - Short sentences.
-   - No paragraph longer than 3 lines.
+   - Maximum ~140 words total. Short sentences. No essay.
 
-7) Output JSON only in this structure:
+7) Output ONLY valid JSON. No markdown, no code fences, no extra commentary. No "Most likely" or "Less likely" phrasing. Use the user's exact details (HAPPENED / YOU DID / THEY DID / RELATIONSHIP / CONTEXT) to personalize every field.
 
+Required JSON structure (use these exact key names):
 {
-  "risk": { "label": "LOW RISK" | "MEDIUM RISK" | "HIGH RISK", "score": number },
-  "stabilization": string,
-  "interpretation": string,
-  "nextMove": string
+  "risk": { "label": "LOW RISK" or "MEDIUM RISK" or "HIGH RISK", "score": number from 0 to 1 },
+  "stabilization": "1–2 short sentences. Calm them down. You're safe tone.",
+  "interpretation": "1 short paragraph. What likely happened. Reference their specific situation.",
+  "nextMove": "3 clear next steps in one short paragraph. Hyper specific. Time boundaries and stopping rules.",
+  "followUpTexts": { "soft": "one message they can send", "neutral": "one message", "firm": "one message" }
 }
+
+Word limit: under 140 words total. Rank (label) must be exactly "LOW RISK", "MEDIUM RISK", or "HIGH RISK". Score must be a number 0–1.
 
 The user should leave feeling:
 - emotionally understood
@@ -85,7 +87,7 @@ TONE: ${input.tone}
 
 You MUST reference at least two concrete details from HAPPENED / YOU DID / THEY DID in your stabilization or interpretation. If you cannot, return HIGH RISK with a short clarification request in stabilization.
 
-Return ONLY the JSON object with keys: risk, stabilization, interpretation, nextMove. No other text.`;
+Return ONLY a single JSON object. Keys: risk (with label and score), stabilization, interpretation, nextMove, optionally followUpTexts (soft, neutral, firm). No markdown, no code blocks, no text outside the JSON. Total under 140 words. Personalize using the details above.`;
 
   return { system: EMOTIONAL_STABILIZER_SYSTEM, user };
 }

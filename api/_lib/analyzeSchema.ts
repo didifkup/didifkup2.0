@@ -26,19 +26,28 @@ export const analyzeInputSchema = z.object({
 
 export type AnalyzeInput = z.infer<typeof analyzeInputSchema>;
 
-/** Emotional Stabilizer output — risk, stabilization, interpretation, nextMove (≤180 words total). */
+/** Emotional Stabilizer output — risk, stabilization, interpretation, nextMove; optional followUpTexts. Extra keys allowed via passthrough. */
 const riskLabelSchema = z.enum(['LOW RISK', 'MEDIUM RISK', 'HIGH RISK']);
 const riskSchema = z.object({
   label: riskLabelSchema,
   score: z.number().min(0).max(1),
 });
 
-export const analyzeOutputSchema = z.object({
-  risk: riskSchema,
-  stabilization: z.string(),
-  interpretation: z.string(),
-  nextMove: z.string(),
+const followUpTextsSchema = z.object({
+  soft: z.string(),
+  neutral: z.string(),
+  firm: z.string(),
 });
+
+export const analyzeOutputSchema = z
+  .object({
+    risk: riskSchema,
+    stabilization: z.string(),
+    interpretation: z.string(),
+    nextMove: z.string(),
+    followUpTexts: followUpTextsSchema.optional(),
+  })
+  .passthrough();
 
 export type AnalyzeOutput = z.infer<typeof analyzeOutputSchema>;
 

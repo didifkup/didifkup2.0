@@ -37,10 +37,15 @@ function setCorsHeaders(req: VercelRequest, res: VercelResponse): void {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Vary', 'Origin');
+  res.setHeader('Cache-Control', 'no-store');
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<VercelResponse | void> {
+  const method = req.method ?? 'UNKNOWN';
+  console.log(JSON.stringify({ route: '/api/analyze', method, ts: new Date().toISOString() }));
+
   setCorsHeaders(req, res);
+  res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -67,6 +72,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return result;
   } catch (err) {
     logError(req, 'handler', err);
-    return res.status(500).json({ ok: false, error: { code: 'SERVER_ERROR', message: 'Unexpected server error' } });
+    const code = 'SERVER_ERROR';
+    const message = 'Service temporarily unavailable. Please try again.';
+    return res.status(503).json({ ok: false, error: { code, message } });
   }
 }

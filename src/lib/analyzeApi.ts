@@ -16,21 +16,35 @@ export async function analyzeSituation(input: AnalyzeInput): Promise<AnalyzeResu
     throw new Error('Not signed in');
   }
 
-  const res = await fetch('/api/analyze', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      happened: input.happened,
-      youDid: input.youDid,
-      theyDid: input.theyDid,
-      relationship: input.relationship ?? null,
-      context: input.context ?? null,
-      tone: input.tone,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+  let res: Response;
+  try {
+    res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        happened: input.happened,
+        youDid: input.youDid,
+        theyDid: input.theyDid,
+        relationship: input.relationship ?? null,
+        context: input.context ?? null,
+        tone: input.tone,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   const text = await res.text();
   let body: Record<string, unknown> = {};
