@@ -799,7 +799,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onAnalyze, onSeeExample }) =>
   );
 };
 
-const AppPage: React.FC = () => {
+/** @deprecated Try-it page removed; /app redirects to /vibecheck. Exported to satisfy noUnusedLocals. */
+export const AppPage: React.FC = () => {
   const reduceMotion = useReducedMotion();
   const { isPro } = useSubscriptionStatus();
   const { user } = useAuth();
@@ -1451,31 +1452,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     </footer>
   </>
 );
-
-/** Protects /app: redirects to /signin if not signed in. */
-function AppRouteGuard({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-muted-foreground">Loading…</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <Navigate
-        to="/signin"
-        replace
-        state={{ message: 'Please sign in to use the app.' }}
-      />
-    );
-  }
-
-  return <>{children}</>;
-}
 
 /** Reusable auth guard: redirects to /auth if not signed in. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
