@@ -30,7 +30,7 @@ export function UpgradeSuccessPage() {
   const handleUnlockPro = async () => {
     const token = session?.access_token;
     if (!token) {
-      navigate('/app');
+      navigate('/vibecheck');
       return;
     }
     setSyncing(true);
@@ -46,7 +46,7 @@ export function UpgradeSuccessPage() {
     } finally {
       setSyncing(false);
     }
-    navigate('/app', { replace: true });
+    navigate('/vibecheck', { replace: true });
   };
 
   return (

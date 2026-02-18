@@ -1305,7 +1305,7 @@ const Navigation: React.FC = () => {
   const navigate = useNavigate();
   const { user, profile, isLoading: authLoading, signOut } = useAuth();
   const { isPro, isLoading: subLoading } = useSubscriptionStatus();
-  const showProBadge = pathname === '/app' && !subLoading && isPro;
+  const showProBadge = pathname === '/vibecheck' && !subLoading && isPro;
 
   const isProStatus = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing';
 
@@ -1358,17 +1358,14 @@ const Navigation: React.FC = () => {
               <span className="text-2xl font-black text-gray-900">DidIFkUp</span>
             </NavLinkItem>
             <div className="hidden md:flex items-center gap-6">
-              <NavLinkItem to="/app" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
-                Try It
+              <NavLinkItem to="/vibecheck" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
+                VibeCheck
               </NavLinkItem>
               <NavLinkItem to="/stickers" className="text-sm font-bold text-gray-600 hover:text-lime-500 transition-colors">
                 Stickers
               </NavLinkItem>
               <NavLinkItem to="/pricing" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
                 Pricing
-              </NavLinkItem>
-              <NavLinkItem to="/vibecheck" className="text-lg font-bold text-gray-700 hover:text-lime-500 transition-colors">
-                VibeCheck
               </NavLinkItem>
               {accountStatusEl}
               {showProBadge && (
@@ -1395,17 +1392,14 @@ const Navigation: React.FC = () => {
               className="md:hidden border-t-2 border-purple-200 bg-white"
             >
               <div className="container mx-auto px-4 py-4 space-y-4">
-                <NavLinkItem to="/app" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
-                  Try It
+                <NavLinkItem to="/vibecheck" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
+                  VibeCheck
                 </NavLinkItem>
                 <NavLinkItem to="/stickers" className="block w-full text-left text-sm font-bold text-gray-600 py-2" onClick={closeMenu}>
                   Stickers
                 </NavLinkItem>
                 <NavLinkItem to="/pricing" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
                   Pricing
-                </NavLinkItem>
-                <NavLinkItem to="/vibecheck" className="block w-full text-left text-lg font-bold text-gray-700 py-2" onClick={closeMenu}>
-                  VibeCheck
                 </NavLinkItem>
                 {authLoading ? (
                   <span className="block text-gray-400 text-sm py-2">…</span>
@@ -1502,12 +1496,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Wrapper for the landing route: passes onAnalyze so "Analyze what happened" switches to app page. */
+/** Wrapper for the landing route: passes onAnalyze so "Run it through the vibe check" goes to VibeCheck. */
 function LandingRoute() {
   const navigate = useNavigate();
   return (
     <Layout>
-      <LandingPage onAnalyze={() => navigate('/app')} />
+      <LandingPage onAnalyze={() => navigate('/vibecheck')} />
     </Layout>
   );
 }
@@ -1520,7 +1514,7 @@ export default function DidIFkUpApp() {
         <SpeedInsights />
         <Routes>
           <Route path="/" element={<LandingRoute />} />
-          <Route path="/app" element={<Layout><AppRouteGuard><AppPage /></AppRouteGuard></Layout>} />
+          <Route path="/app" element={<Navigate to="/vibecheck" replace />} />
           <Route path="/stickers" element={<Layout><StickersPage /></Layout>} />
           <Route path="/pricing" element={<Layout><PricingPage /></Layout>} />
           <Route path="/vibecheck" element={<Layout><VibeCheckPage /></Layout>} />

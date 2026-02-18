@@ -24,8 +24,8 @@ export function UpgradeCancelPage() {
             variant="outline"
             className="rounded-2xl px-6 py-3 text-lg font-bold border-2"
           >
-            <Link to="/app">
-              Back to app
+            <Link to="/vibecheck">
+              Back to VibeCheck
               <ArrowRight className="ml-2 w-5 h-5 inline-block" />
             </Link>
           </Button>

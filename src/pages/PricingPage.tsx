@@ -32,8 +32,8 @@ export function PricingPage() {
               variant="outline"
               className="w-full rounded-2xl py-6 text-lg font-bold border-2"
             >
-              <Link to="/app">
-                Try the app
+              <Link to="/vibecheck">
+                Try VibeCheck
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             </Button>
@@ -79,8 +79,8 @@ export function PricingPage() {
 
         <div className="text-center">
           <Button asChild variant="ghost" className="text-gray-600 hover:text-lime-600">
-            <Link to="/app">
-              Try the app
+            <Link to="/vibecheck">
+              Try VibeCheck
               <ArrowRight className="ml-2 w-4 h-4" />
             </Link>
           </Button>
